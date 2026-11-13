@@ -16,7 +16,7 @@ slots exist, but independent GPIO wiring is required before enabling more.
 
 1. Physically disconnect the actuator battery, keep JP5 open, and disconnect
    module cables before uploading. USB supplies the ESP32 during upload.
-2. Open `hub_ble.ino` with all five accompanying `.h` files in the same folder.
+2. Open `hub_ble.ino` with all four accompanying `.h` files in the same folder.
    Use the classic **ESP32 Dev Module**, existing serial port, and 115200
    upload speed. Built with Arduino ESP32 **3.2.1**, its bundled BLE library,
    and the default partition. No extra Arduino libraries are needed.
