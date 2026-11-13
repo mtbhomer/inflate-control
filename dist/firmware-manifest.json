@@ -1,5 +1,7 @@
 {
-  "firmware": "INFLATE BLE v1",
+  "firmware": "MEDITATION VEST BLE v2",
+  "bleName": "MeditationVest",
+  "protocol": 2,
   "enabledChannels": [
     1,
     2
@@ -21,18 +23,21 @@
     "maxPump": 2000,
     "maxHold": 10000,
     "valveLead": 100,
-    "ventInterval": 2000
+    "maxRelease": 10000,
+    "fixedCooldown": 0,
+    "maxRepeatCount": 999
   },
   "sensorDisplayOnly": true,
-  "disconnectBehavior": "accepted cycle finishes on firmware timer; no automatic restart",
+  "disconnectBehavior": "finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
   "assistantUploaded": false,
-  "hardwareBleVerified": false,
+  "v1OperationUserReported": true,
+  "v2HardwareVerified": false,
   "files": {
-    "BleProtocol.h": "657624091254ca503f51fb75eb1b5744db4c2e8ebd6dabe8f0227dbfe6c89358",
-    "HubController.h": "025dbc5d6db212ef8d81c73147313cfce7d1adb8eaaa680757c7e753bb10f29c",
+    "BleProtocol.h": "a9dae906d656d1c210f85ec23019c7d30becd6ad28efed3503eff572024f43c0",
+    "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "96126ab50791519824dc5e2c09642442a7e6eb90dab5d609fcbd76434072a97f",
-    "README.md": "827d727deb963f2f1abbfab9bbcff2f1edd8d26578f2c7c3d2669a1f69a84667",
-    "hub_ble.ino": "3a724e4f542f7560b5e449793b1fc844736ebb7a19e54ad4565a3a4460a3c05a"
+    "README.md": "3657edf7e1c74839b52d4dbde6b9338107d067601f3207d17405c72b802832e9",
+    "hub_ble.ino": "4e125955053ffb3d8c924407938c0814fbe753861560c92746f188c8aa4897e6"
   }
 }

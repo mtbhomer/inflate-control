@@ -1,49 +1,60 @@
 #pragma once
 #include <stdint.h>
-enum class Phase:uint8_t { Off=0, Select=1, Pump=2, Hold=3 };
-enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Venting=3, Invalid=4, Disabled=5, Stopped=6, Expired=7, Duplicate=8 };
+enum class Phase:uint8_t { Off=0, Select=1, Pump=2, Hold=3, Release=4 };
+enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Invalid=4, Disabled=5, Stopped=6, Expired=7 };
+struct Run {
+ Phase phase=Phase::Off;
+ uint8_t group=0;
+ uint16_t pumpMs=1000,holdMs=1000,releaseMs=1000,repeats=1,cycle=0;
+ uint32_t started=0;
+};
 class HubController {
  public:
-  static constexpr uint16_t MIN_PUMP=50, MAX_PUMP=2000, MAX_HOLD=10000, LEAD=100, VENT=2000;
+  static constexpr uint16_t MIN_PUMP=50,MAX_PUMP=2000,MAX_HOLD=10000,MAX_RELEASE=10000,MAX_REPEATS=999,LEAD=100;
   explicit HubController(uint8_t mask):enabled(mask){}
+  Run runs[6];
   void update(uint32_t now) {
-    if(channel<0)return;
-    const uint32_t elapsed=now-started;
-    if(elapsed>=uint32_t(LEAD)+pumpMs+holdMs) stop(now);
-    else if(elapsed<LEAD)phase=Phase::Select;
-    else if(elapsed<uint32_t(LEAD)+pumpMs)phase=Phase::Pump;
-    else phase=Phase::Hold;
+    for(auto&r:runs){
+      if(r.phase==Phase::Off)continue;
+      const uint32_t elapsed=now-r.started;
+      if(r.phase==Phase::Release){
+        // Never catch up missed cycles. Start the next cycle from this tick.
+        if(elapsed>=r.releaseMs && elapsed>0){r.started=now;r.phase=Phase::Select;if(r.cycle<65535)++r.cycle;}
+      }else if(elapsed>=uint32_t(LEAD)+r.pumpMs+r.holdMs){
+        if(r.repeats && r.cycle>=r.repeats)r.phase=Phase::Off;
+        else {r.phase=Phase::Release;r.started=now;}
+      }else if(elapsed<LEAD)r.phase=Phase::Select;
+      else if(elapsed<uint32_t(LEAD)+r.pumpMs)r.phase=Phase::Pump;
+      else r.phase=Phase::Hold;
+    }
   }
-  Reply start(uint8_t ch,uint16_t pump,uint16_t hold,uint32_t now) {
+  Reply start(uint8_t mask,uint16_t pump,uint16_t hold,uint16_t release,uint16_t repeats,uint32_t now) {
     update(now);
-    if(ch>=6 || pump<MIN_PUMP || pump>MAX_PUMP || hold>MAX_HOLD)return Reply::Invalid;
-    if(!(enabled&(1<<ch)))return Reply::Disabled;
-    if(channel>=0)return Reply::Busy;
-    if(ventRemaining(now))return Reply::Venting;
-    channel=ch;pumpMs=pump;holdMs=hold;started=now;phase=Phase::Select;
+    if(!mask || mask>63 || pump<MIN_PUMP || pump>MAX_PUMP || hold>MAX_HOLD || release>MAX_RELEASE || repeats>MAX_REPEATS)return Reply::Invalid;
+    if(mask&~enabled)return Reply::Disabled;
+    // Group start is atomic: a busy member rejects the entire request.
+    if(mask&activeMask())return Reply::Busy;
+    for(uint8_t ch=0;ch<6;++ch)if(mask&(1<<ch)){
+      auto&r=runs[ch];r.phase=Phase::Select;r.group=mask;r.pumpMs=pump;r.holdMs=hold;r.releaseMs=release;r.repeats=repeats;r.cycle=1;r.started=now;
+    }
     return Reply::Accepted;
   }
-  void stop(uint32_t now) {
-    if(channel>=0){stopped=now;hasStopped=true;}
-    channel=-1;phase=Phase::Off;
+  void stop(){for(auto&r:runs)r.phase=Phase::Off;}
+  void endContinuous(){
+    for(auto&r:runs)if(r.phase!=Phase::Off && r.repeats==0){
+      if(r.phase==Phase::Release)r.phase=Phase::Off;
+      else r.repeats=r.cycle; // Finish this cycle; never restart on reconnection.
+    }
   }
-  bool pump(uint8_t ch)const{return channel==ch && phase==Phase::Pump;}
-  bool valve(uint8_t ch)const{return channel==ch && phase!=Phase::Off;}
-  uint16_t remaining(uint32_t now)const {
-    if(channel<0)return 0;
-    const uint32_t elapsed=now-started;
-    uint32_t end=phase==Phase::Select?LEAD:phase==Phase::Pump?uint32_t(LEAD)+pumpMs:uint32_t(LEAD)+pumpMs+holdMs;
+  uint8_t activeMask()const {uint8_t mask=0;for(uint8_t ch=0;ch<6;++ch)if(runs[ch].phase!=Phase::Off)mask|=1<<ch;return mask;}
+  bool pump(uint8_t ch)const{return runs[ch].phase==Phase::Pump;}
+  bool valve(uint8_t ch)const{return runs[ch].phase==Phase::Select || runs[ch].phase==Phase::Pump || runs[ch].phase==Phase::Hold;}
+  uint16_t remaining(uint8_t ch,uint32_t now)const {
+    const auto&r=runs[ch];if(r.phase==Phase::Off)return 0;
+    const uint32_t elapsed=now-r.started;
+    const uint32_t end=r.phase==Phase::Release?r.releaseMs:r.phase==Phase::Select?LEAD:r.phase==Phase::Pump?uint32_t(LEAD)+r.pumpMs:uint32_t(LEAD)+r.pumpMs+r.holdMs;
     return elapsed<end?end-elapsed:0;
   }
-  uint16_t ventRemaining(uint32_t now)const {
-    const uint32_t elapsed=now-stopped;
-    return hasStopped && elapsed<VENT?VENT-elapsed:0;
-  }
-  int8_t channel=-1;
-  Phase phase=Phase::Off;
  private:
   uint8_t enabled;
-  uint16_t pumpMs=1000,holdMs=1000;
-  uint32_t started=0,stopped=0;
-  bool hasStopped=false;
 };

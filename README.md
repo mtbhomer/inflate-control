@@ -1,4 +1,4 @@
-# Inflate control
+# MeditationVest control · v2
 
 Mobile Web Bluetooth control for an ESP32 pneumatic prototype. Static HTML,
 CSS and JavaScript; no backend, framework, telemetry service or build step.
@@ -9,9 +9,13 @@ preview that never sends Bluetooth commands.
 
 - CH1: pump D22, valve D23; CH2: pump D25, valve D26, HX710 D32/D33.
 - Per-channel pump 0.05–2 s, hold 0–10 s; defaults 1 s / 1 s.
-- One cycle at a time. The ESP32 owns timers and finishes accepted cycles
-  after disconnect. No automatic start/retry/replay on reconnect.
-- Stop & release, live CH2 raw/relative counts, vented display zero and chart.
+- Link/unlink two boards with shared pump/hold/release times. Unlinked channels
+  can run independent patterns. One command synchronizes a linked group.
+- Run once, 1–999 total cycles, or Until Stop. No fixed cooldown after release.
+- Finite patterns finish after BLE disconnect; Until Stop finishes its current
+  cycle and cancels repetitions. No automatic start/retry/replay on reconnect.
+- Stop & release all channels, live CH2 0–100% sensor range, vented zero,
+  raw counts, fixed-scale chart and digital clipping indicator.
 - Four additional channels are shown disabled. UI enables them only when
   firmware advertises assigned GPIOs; wiring and power must be planned first.
 - Sensor data is display-only and uncalibrated; no kPa or pressure cutoff.
@@ -53,5 +57,7 @@ are required. Never serve this page in an iframe for actual device control.
 - [Web Bluetooth specification](https://bluetooth.spec.whatwg.org/): characteristic access and connection behavior.
 - [Espressif BLE library](https://github.com/espressif/arduino-esp32/tree/3.2.1/libraries/BLE): firmware's installed API version.
 
-BLE radio/Bluefy behavior and actuator timing have not been verified on the
-physical board by preparing this site. The UI and protocol have software tests.
+The user reported that v1 worked. V2 linking/repetition and simultaneous
+pump current have not been physically verified. Firmware compilation, native
+controller tests, JS transport/protocol tests and simulated UI preview are
+software evidence only. See the firmware README for protocol v2 and details.

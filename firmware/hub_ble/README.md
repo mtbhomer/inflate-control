@@ -1,101 +1,163 @@
-# InflateHub BLE v1
+# MeditationVest BLE v2
 
-ESP32 firmware for the mobile control page. Keep the existing working wiring:
+Mobile BLE control with linked boards and repeat patterns. Device name:
+**MeditationVest**. Upload this v2 sketch before using the updated page.
+The service UUID is unchanged; old v1 firmware receives an upgrade message.
+
+## Existing wiring
 
 | Channel | Pump | Valve | Sensor |
 |---|---|---|---|
 | CH1, lower left | D22 | D23 | none |
 | CH2, bottom left | D25 | D26 | HX710 OUT D32, SCK D33 |
 
-CH1 retains the working software exchange. CH0/CH3/CH4/CH5 are disabled and
-must remain unplugged; earlier CH3 leads can share CH2 GPIOs. Six channel
-slots exist, but independent GPIO wiring is required before enabling more.
-`PinMap.h` checks distinct valid outputs and rejects partially assigned slots.
+CH1 retains its working software exchange. No wiring changes are required.
+CH0/CH3/CH4/CH5 stay disabled and unplugged; earlier CH3 leads can share CH2
+GPIOs. Six software slots exist, but independent GPIO wiring is required
+before enabling more. `PinMap.h` validates unique assigned GPIOs.
 
-## Upload
+## Upload and use
 
-1. Physically disconnect the actuator battery, keep JP5 open, and disconnect
-   module cables before uploading. USB supplies the ESP32 during upload.
-2. Open `hub_ble.ino` with all four accompanying `.h` files in the same folder.
-   Use the classic **ESP32 Dev Module**, existing serial port, and 115200
-   upload speed. Built with Arduino ESP32 **3.2.1**, its bundled BLE library,
-   and the default partition. No extra Arduino libraries are needed.
-3. Open Serial Monitor at 115200. Expect **INFLATE BLE v1** and advertising
-   **InflateHub**. The old serial `1`/`2` commands are not used by this sketch;
-   serial `x` remains an immediate stop request.
-4. With power off, reconnect the existing module cables. Keep JP5 open with
-   USB. Open the published HTTPS page in **Bluefy**, tap **Connect hub** and
-   choose **InflateHub**. First confirm status and CH2 sensor readings with
-   the actuator battery still disconnected. No cycle starts on connection.
-5. For a powered trial, use the established unworn bench setup, check actual
-   venting, and start with the existing 1 s pump / 1 s hold settings. Check
-   CH1 pump D22 / valve D23 and CH2 pump D25 / valve D26 behavior separately.
+1. Physically disconnect the actuator battery and keep JP5 open during upload.
+2. Open `hub_ble.ino` with its four `.h` files in the same folder. Select
+   classic **ESP32 Dev Module**, the existing serial port and 115200 upload
+   speed. Built with Arduino ESP32 **3.2.1**, bundled BLE and default partition.
+3. Serial Monitor at 115200 shows **MEDITATION VEST BLE v2** and advertising
+   **MeditationVest**. Serial `x` stops all outputs. Old serial `1`/`2`
+   commands do not start this sketch.
+4. Open the HTTPS control page in **Bluefy**, refresh it, tap **Connect hub**,
+   and choose **MeditationVest**. Check status with actuator power off first.
+   A connection never starts a cycle.
+5. Set pump and hold times on a channel and use **Run once**. Expand
+   **Repeat pattern** to choose the released interval and either **Set count**
+   (1–999 total cycles) or **Until Stop**. **Stop & release** stops every channel.
+6. Choose two channels and tap **Link boards**. Shared settings control both
+   boards. One command starts both on the same firmware tick; all phases
+   and repeats match. Unlink while idle to restore individual settings.
+7. Fully vent the CH2 bag, then tap **Set vented zero** for the sensor chart.
 
-## Timing and telemetry
+The user reported that the previous v1 functions work. The new simultaneous
+mode has not been physically tested. Battery output current and shared wire
+ratings remain unknown; check the first linked trial on the bench. Output
+status reports commands, not measured valve or motor feedback.
 
-The page sends each cycle's duration to the ESP32. Firmware enforces pump
-**50–2000 ms**, hold **0–10000 ms**, valve lead **100 ms**, and a **2000 ms**
-minimum interval after stopping before another cycle. One channel owns the
-outputs, including hold. Busy commands are discarded; none queue for later.
-The valve remains ON throughout pumping and holding, then both outputs go OFF.
-A zero hold releases immediately after the pump interval.
+## Timing
 
-A dedicated task owns GPIO and deadlines. BLE notifications run separately.
-Accepted finite cycles finish even if Bluetooth disconnects or the phone
-sleeps. Reconnection changes the session nonce and never restarts a cycle.
-Stop takes priority over older queued commands. Expired start commands and
-replayed sequence numbers cannot start a later cycle. Stop requires a working
-connection; the physical battery switch remains the alternative if it is lost.
+Every cycle: valve select **100 ms**, pump **50–2000 ms**, hold **0–10000 ms**,
+then both outputs OFF to release. Zero hold releases at pump-off. There is
+**no fixed cooldown** after Run once, the final repeat, or Stop.
 
-Only CH2's HX710 is sampled. Raw counts, sample age, frame status and clipping
-are display-only; there is no sensor-loss/pressure/clipping stop. The page's
-vented zero is local display arithmetic, not calibration. No kPa conversion
-is claimed. Stale/invalid data appears as unavailable, not a current reading.
+A repeat pattern adds your chosen **0–10000 ms released interval** between
+cycles. Zero means no deliberate pause, with at least one output-off tick;
+it does not guarantee that the bag has deflated. Final release becomes Ready
+immediately, without waiting out that interval. Count means total cycles,
+including the first. Defaults: pump 1 s, hold 1 s, release 1 s, 3 cycles.
 
-## Protocol
+Independent channels can overlap and use different patterns. Linked boards
+use one mask and one shared set of times. An already-running member rejects
+an entire linked request; it cannot partially start the pair. Changes to
+linking/settings apply only to new runs. The firmware preserves an accepted
+run's settings when the browser reloads or reconnects.
 
-All integer fields are little endian. Payloads fit the default 20-byte ATT
-value limit; a larger negotiated MTU is not required.
+A dedicated control task owns GPIO and deadlines; notifications run separately.
+A delayed loop releases before another cycle; it does not catch up missed
+cycles with bursts. GPIO writes are sequential within the same control tick,
+not electrically simultaneous edges.
+
+## Disconnect and Stop
+
+- **Set count:** accepted patterns finish their remaining cycles on the hub
+  even if Bluetooth disconnects or the page closes.
+- **Until Stop:** repeats while connected. A BLE disconnect finishes the
+  current cycle, releases, and cancels further repeats. If already in the
+  released interval, it ends immediately. There is no sensor-loss stop.
+- Reconnect never restarts any pattern. Live status shows ongoing runs.
+- Stop bypasses queued starts and releases all channels when received by the
+  ESP32. It needs a working connection. The page reports an unconfirmed Stop;
+  use the battery switch if necessary. Serial `x` also stops all channels.
+- Closing/backgrounding a page does not necessarily disconnect BLE promptly;
+  this is not a phone heartbeat timeout.
+
+Session nonces, sequence ordering and a 250 ms queue expiry prevent stale
+starts. Uncertain writes are never retried automatically. New starts are
+unavailable when status is stale, but the Stop button remains available.
+
+## Sensor range display
+
+CH2 HX710 counts are signed 24-bit ADC readings, not pressure units. With
+vented zero B, the displayed percentage is:
+
+`100 × (raw − B) / (8,388,607 − B)`, clamped to 0–100%.
+
+The chart has a fixed 0–100% scale. Zero is set deliberately for each connection;
+an inflated sensor reading is never automatically treated as vented. Raw
+counts remain visible in small text. Baselines at either digital endpoint are
+rejected. Stale/invalid data is unavailable, rather than a frozen live number.
+
+**Near digital limit** starts at 95%. **CLIPPED** means the ADC reports exactly
++8,388,607 or −8,388,608; negative clipping can therefore appear at 0% on this
+positive-range meter. 100% is a digital ceiling, not fullness, kPa, a safe
+pressure, or proof of usable transducer range. The transducer may saturate
+or lose accuracy before the ADC endpoint. The display does not stop outputs.
+
+## BLE protocol v2
+
+All integers are little endian. Commands are 18 bytes; each notification is
+20 bytes, so MTU 23 is sufficient. The UUIDs remain:
 
 - Service `8d5a0001-4c7b-4f45-9d68-8e0c2c970001`
-- Command `8d5a0002-4c7b-4f45-9d68-8e0c2c970001`, WRITE with response
-- Status `8d5a0003-4c7b-4f45-9d68-8e0c2c970001`, READ + NOTIFY, 10 Hz
-- Info `8d5a0004-4c7b-4f45-9d68-8e0c2c970001`, READ
+- Command `8d5a0002-4c7b-4f45-9d68-8e0c2c970001`: WRITE with response
+- Status `8d5a0003-4c7b-4f45-9d68-8e0c2c970001`: READ + NOTIFY
+- Info `8d5a0004-4c7b-4f45-9d68-8e0c2c970001`: READ
 
-Command (14 bytes): version u8 at 0; operation u8 at 1 (1=start, 2=stop);
-channel u8 at 2 (255 for stop); reserved zero at 3; sequence u16 at 4;
-pump ms u16 at 6; hold ms u16 at 8; session nonce u32 at 10. Stop uses zero
-pump/hold. Sequences start at 1 per connection and do not wrap; reconnect
-before 65535 is exceeded. Malformed or wrong-session packets are ignored.
+Command (18): version 2 at byte 0; op at 1 (1=start, 2=stop all);
+channel bitmask at 2; reserved zero at 3; sequence u16 at 4; pump ms u16
+at 6; hold ms u16 at 8; session u32 at 10; release ms u16 at 14; total
+cycles u16 at 16 (0=until Stop). Stop requires zero mask and all timing/count
+fields zero. Sequence 1–65535 per connection; reconnect to renew. Unknown
+versions, malformed packets, old sequences and wrong sessions are ignored.
 
-Status (20 bytes): version u8 at 0; phase u8 at 1 (0=off, 1=select, 2=pump,
-3=hold); active channel u8 at 2 (255=off); sensor flags low nibble and reply
-high nibble at 3; acknowledged sequence u16 at 4; session u32 at 6; signed
-raw count i32 at 10; age ms u16 at 14; phase remaining ms u16 at 16;
-vent interval remaining ms u16 at 18. Age saturates at 65535.
-Flags: 1=has sample, 2=fresh, 4=frame error, 8=ADC endpoint. Replies:
-0=none, 1=accepted, 2=busy, 3=venting, 4=invalid, 5=disabled, 6=stopped,
-7=expired. Duplicate/old sequence numbers leave the previous acknowledgement
-unchanged. Status describes commanded outputs, not measured motor feedback.
+Summary notification (20): version at 0; type 0 at 1; sensor flags low
+nibble and reply high nibble at 2; active mask at 3; acknowledged sequence
+u16 at 4; session u32 at 6; raw i32 at 10; age ms u16 at 14 (saturates
+65535); six 3-bit phases packed at 16–18; reserved zero at 19.
+Phases: 0=off, 1=select, 2=pump, 3=hold, 4=released between repeats.
+Flags: 1=has sample, 2=fresh, 4=frame error, 8=digital endpoint.
+Replies: 0=none, 1=accepted, 2=busy, 4=invalid, 5=disabled, 6=stopped,
+7=expired. A duplicate leaves the previous acknowledgement unchanged.
 
-Info (20 bytes): version at 0; enabled mask at 1; sensor channel at 2;
-firmware revision at 3; u16 min pump/max pump/max hold/lead/vent at
-4/6/8/10/12; session nonce u32 at 14; flags at 18 (bit 0: sensor display-only,
-bit 1: accepted cycles continue on disconnect); reserved zero at 19.
+Channel detail notification (20): version at 0; 0x10 | phase at 1; channel
+at 2; run's linked group mask at 3; current cycle u16 at 4; session u32 at
+6; pump/hold/release ms u16 at 10/12/14; total cycles u16 at 16; phase
+remaining ms u16 at 18. Detail packets cannot acknowledge commands. Continuous
+cycle display saturates at 65535; disconnect converts its target to the
+current cycle. Retained OFF details describe the last run, not a new one.
 
-BLE is nearby control without an application pairing secret. HTTPS protects
-page delivery; it does not authenticate the BLE peripheral or encrypt a
-non-paired GATT link. The page never forwards control or sensor data to a server.
-This version is for the current supervised prototype, not unattended access.
+The hub emits a summary and one detail per enabled channel about every
+100 ms. Reads return a summary (an overlapping notification can yield a
+detail, which the client handles). Detail and summary observations are
+approximate UI progress, not atomic measurements of physical outputs.
 
-## Checks and limits
+Info (20): version at 0; enabled mask at 1; sensor channel at 2; firmware
+revision 2 at 3; u16 min pump/max pump/max hold/valve lead/max release at
+4/6/8/10/12; session u32 at 14; feature flags 15 at 18 (display-only sensor,
+finite completion after disconnect, linked masks, repeat patterns); zero at 19.
 
-Native controller/protocol tests cover enabled pins, duration boundaries,
-zero hold, exclusions, rollover, expiry, replay and stop ordering. Browser
-protocol/transport tests cover binary framing, acknowledgement, old sessions,
-write serialization, stop cancellation and stalled writes. The sketch compiles
-for classic ESP32. Native task scheduling, Bluetooth radio behavior, iPhone
-backgrounding and physical actuator timing still need hardware verification.
+BLE has no application pairing secret; HTTPS serves the page but does not
+authenticate the nearby device. Timing preferences stay in localStorage;
+sensor/control data is not uploaded. This is a supervised prototype.
 
-The existing serial v4 program is preserved for rollback in
-`firmware/hub_two_module_test`; it is a separate sketch.
+## Validation and rollback
+
+Native tests cover linked phases, all timing boundaries, independent overlap,
+atomic busy rejection, counted/continuous repeats, Stop, disconnect, immediate
+restart, zero release, delayed updates, millis wrap, replay, expiry and
+telemetry. JS tests cover matching packets, transport ordering/timeouts,
+version compatibility and percentage/clipping arithmetic. The phone-width
+Safari preview uses simulated data and sends no Bluetooth commands.
+
+The compiled v2 sketch and preview are software checks. Physical linked
+current, radio behavior, phone backgrounding and actual pump/valve timing
+still need verification. The assistant did not upload or actuate hardware.
+Previous BLE firmware is archived as `hub_ble-v1.zip`; the separate serial
+v4 program remains unchanged in the research workspace.

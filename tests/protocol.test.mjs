@@ -1,17 +1,44 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {decodeInfo,decodeStatus,encodeCommand} from '../dist/protocol.mjs';
 import {HubBLE} from '../dist/ble.mjs';
-const info={mask:6,minPump:50,maxPump:2000,maxHold:10000,session:0x12345678};
-function status(seq=1,session=info.session,reply=1){let v=new DataView(new ArrayBuffer(20));v.setUint8(0,1);v.setUint8(1,0);v.setUint8(2,255);v.setUint8(3,(reply<<4)|3);v.setUint16(4,seq,true);v.setUint32(6,session,true);v.setInt32(10,-123456,true);v.setUint16(14,20,true);return v;}
-test('command layout matches firmware golden bytes',()=>{const b=encodeCommand({op:1,channel:1,pumpMs:1000,holdMs:1000,seq:1,session:info.session},info);assert.deepEqual([...new Uint8Array(b)],[1,1,1,0,1,0,232,3,232,3,120,86,52,18]);});
-test('duration and channel guards reject bad actions',()=>{for(const x of [{channel:3},{pumpMs:2001},{holdMs:10001},{pumpMs:NaN},{seq:0},{session:0},{holdMs:-1}])assert.throws(()=>encodeCommand({op:1,channel:1,pumpMs:1000,holdMs:1000,seq:1,session:info.session,...x},info));});
+const info={mask:6,minPump:50,maxPump:2000,maxHold:10000,maxRelease:10000,session:0x12345678};
+function status(seq=1,session=info.session,reply=1){let v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0);v.setUint8(2,(reply<<4)|3);v.setUint8(3,0);v.setUint16(4,seq,true);v.setUint32(6,session,true);v.setInt32(10,-123456,true);v.setUint16(14,20,true);return v;}
+test('command layout matches firmware golden bytes',()=>{const b=encodeCommand({op:1,mask:6,pumpMs:1000,holdMs:1000,seq:1,session:info.session},info);assert.deepEqual([...new Uint8Array(b)],[2,1,6,0,1,0,232,3,232,3,120,86,52,18,0,0,1,0]);});
+test('duration and channel guards reject bad actions',()=>{for(const x of [{mask:8},{pumpMs:2001},{holdMs:10001},{pumpMs:NaN},{seq:0},{session:0},{holdMs:-1},{mask:0},{releaseMs:10001},{repeats:1000},{repeats:-1},{repeats:1.5}])assert.throws(()=>encodeCommand({op:1,mask:6,pumpMs:1000,holdMs:1000,seq:1,session:info.session,...x},info));});
 test('signed sensor values, framing, stale status and session are decoded',()=>{let v=status();let s=decodeStatus(v);assert.equal(s.raw,-123456);assert.equal(s.session,info.session);assert.equal(s.fresh,true);v.setUint16(14,500,true);assert.equal(decodeStatus(v).fresh,false);v.setUint8(1,9);assert.throws(()=>decodeStatus(v));assert.throws(()=>decodeStatus(new Uint8Array(19)));});
-test('capabilities constrain timing and require nonzero session',()=>{let v=new DataView(new ArrayBuffer(20));v.setUint8(0,1);v.setUint8(1,6);v.setUint8(2,2);v.setUint8(3,1);for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,2000]])v.setUint16(p,n,true);v.setUint32(14,info.session,true);v.setUint8(18,3);assert.equal(decodeInfo(v).mask,6);v.setUint16(6,2001,true);assert.throws(()=>decodeInfo(v));});
+test('capabilities constrain timing and require nonzero session',()=>{let v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,6);v.setUint8(2,2);v.setUint8(3,2);for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,10000]])v.setUint16(p,n,true);v.setUint32(14,info.session,true);v.setUint8(18,15);assert.equal(decodeInfo(v).mask,6);v.setUint16(6,2001,true);assert.throws(()=>decodeInfo(v));});
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 function fake(){let h=new HubBLE();h.info=info;h.device={gatt:{connected:true}};return h;}
-test('GATT writes serialize while Stop does not wait for a start acknowledgement',async()=>{const h=fake();let running=0,max=0,ops=[];h.commandChar={async writeValueWithResponse(bytes){running++;max=Math.max(max,running);let v=new DataView(bytes);ops.push(v.getUint8(1));await delay(20);running--;h.status(status(v.getUint16(4,true),info.session,v.getUint8(1)===2?6:1));}};const a=h.command(1,1,1000,1000);await delay(5);const b=h.command(2);assert.equal((await a).reply,1);assert.equal((await b).reply,6);assert.deepEqual(ops,[1,2]);assert.equal(max,1);});
-test('Stop cancels an unsent Start and fallback writeValue is supported',async()=>{const h=fake();let ops=[];h.commandChar={async writeValue(bytes){const v=new DataView(bytes);ops.push(v.getUint8(1));h.status(status(v.getUint16(4,true),info.session,6));}};const start=h.command(1,1,1000,1000);const stopped=h.command(2);await assert.rejects(start,/cancelled/);assert.equal((await stopped).reply,6);assert.deepEqual(ops,[2]);});
-test('old-session status cannot acknowledge a new command',async()=>{const h=fake();let settled=false;h.commandChar={async writeValueWithResponse(bytes){const seq=new DataView(bytes).getUint16(4,true);h.status(status(seq,info.session+1));await delay(15);assert.equal(settled,false);h.status(status(seq));}};await h.command(1,1,1000,1000).then(()=>settled=true);assert.equal(settled,true);});
-test('disconnect rejects a pending command and never resends it',async()=>{const h=fake();h.device.removeEventListener=()=>{};let writes=0;h.commandChar={async writeValueWithResponse(){writes++;}};const p=h.command(1,1,1000,1000);await delay(2);h.clear('Disconnected');await assert.rejects(p,/unknown/);assert.equal(writes,1);});
-test('a stalled GATT write cannot leave Stop pending forever or replay it later',async()=>{const h=fake();let finish,writes=0;h.commandChar={async writeValueWithResponse(){writes++;await new Promise(r=>finish=r);}};const a=h.command(1,1,1000,1000);await delay(5);const b=h.command(2);await Promise.all([assert.rejects(a,/No confirmation/),assert.rejects(b,/Stop not confirmed/)]);finish();await delay(5);assert.equal(writes,1);});
-test('Stop acknowledgement settles an earlier start even if its acknowledgement was missed',async()=>{const h=fake();h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes);if(v.getUint8(1)===2)h.status(status(v.getUint16(4,true),info.session,6));}};const a=h.command(1,1,1000,1000);await delay(2);const b=h.command(2);assert.equal((await b).reply,6);assert.equal((await a).superseded,true);assert.equal(h.waiters.size,0);});
+test('GATT writes serialize while Stop does not wait for a start acknowledgement',async()=>{const h=fake();let running=0,max=0,ops=[];h.commandChar={async writeValueWithResponse(bytes){running++;max=Math.max(max,running);let v=new DataView(bytes);ops.push(v.getUint8(1));await delay(20);running--;h.status(status(v.getUint16(4,true),info.session,v.getUint8(1)===2?6:1));}};const a=h.command(1,2,1000,1000);await delay(5);const b=h.command(2);assert.equal((await a).reply,1);assert.equal((await b).reply,6);assert.deepEqual(ops,[1,2]);assert.equal(max,1);});
+test('Stop cancels an unsent Start and fallback writeValue is supported',async()=>{const h=fake();let ops=[];h.commandChar={async writeValue(bytes){const v=new DataView(bytes);ops.push(v.getUint8(1));h.status(status(v.getUint16(4,true),info.session,6));}};const start=h.command(1,2,1000,1000);const stopped=h.command(2);await assert.rejects(start,/cancelled/);assert.equal((await stopped).reply,6);assert.deepEqual(ops,[2]);});
+test('old-session status cannot acknowledge a new command',async()=>{const h=fake();let settled=false;h.commandChar={async writeValueWithResponse(bytes){const seq=new DataView(bytes).getUint16(4,true);h.status(status(seq,info.session+1));await delay(15);assert.equal(settled,false);h.status(status(seq));}};await h.command(1,2,1000,1000).then(()=>settled=true);assert.equal(settled,true);});
+test('disconnect rejects a pending command and never resends it',async()=>{const h=fake();h.device.removeEventListener=()=>{};let writes=0;h.commandChar={async writeValueWithResponse(){writes++;}};const p=h.command(1,2,1000,1000);await delay(2);h.clear('Disconnected');await assert.rejects(p,/unknown/);assert.equal(writes,1);});
+test('a stalled GATT write cannot leave Stop pending forever or replay it later',async()=>{const h=fake();let finish,writes=0;h.commandChar={async writeValueWithResponse(){writes++;await new Promise(r=>finish=r);}};const a=h.command(1,2,1000,1000);await delay(5);const b=h.command(2);await Promise.all([assert.rejects(a,/No confirmation/),assert.rejects(b,/Stop not confirmed/)]);finish();await delay(5);assert.equal(writes,1);});
+test('Stop acknowledgement settles an earlier start even if its acknowledgement was missed',async()=>{const h=fake();h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes);if(v.getUint8(1)===2)h.status(status(v.getUint16(4,true),info.session,6));}};const a=h.command(1,2,1000,1000);await delay(2);const b=h.command(2);assert.equal((await b).reply,6);assert.equal((await a).superseded,true);assert.equal(h.waiters.size,0);});
+
+import {sensorRange,validZero,ADC_MIN,ADC_MAX} from '../dist/sensor.mjs';
+test('sensor percent anchors vented zero and digital ceiling without implying pressure',()=>{
+ assert.equal(sensorRange(1764600,1764600).percent,0);
+ assert.equal(sensorRange(ADC_MAX,1764600).percent,100);
+ assert.equal(sensorRange(1764600+(ADC_MAX-1764600)/2,1764600),null); // ADC counts are integers.
+ assert.ok(Math.abs(sensorRange(5076604,1764600).percent-50)<.001);
+ assert.equal(sensorRange(1700000,1764600).percent,0);
+ assert.equal(sensorRange(8000000,1764600).clipped,false);
+ assert.equal(sensorRange(8388606,1764600).near,true);
+ assert.equal(sensorRange(ADC_MAX,1764600).clipped,true);
+ assert.equal(sensorRange(ADC_MIN,1764600).clipped,true);
+ assert.equal(sensorRange(2000000,null).percent,null);
+ assert.equal(validZero(ADC_MAX),false);assert.equal(validZero(ADC_MIN),false);assert.equal(validZero(null),false);
+});
+test('linked patterns and continuous mode have one atomic command',()=>{
+ const b=encodeCommand({op:1,mask:6,pumpMs:2000,holdMs:10000,releaseMs:500,repeats:0,seq:1,session:info.session},info),v=new DataView(b);
+ assert.equal(v.byteLength,18);assert.equal(v.getUint8(2),6);assert.equal(v.getUint16(14,true),500);assert.equal(v.getUint16(16,true),0);
+});
+test('summary decodes six simultaneous phases and rejects inconsistent masks',()=>{
+ const v=status();v.setUint8(3,6);v.setUint8(16,144);assert.deepEqual(decodeStatus(v).phases,[0,2,2,0,0,0]);v.setUint8(3,2);assert.throws(()=>decodeStatus(v));
+});
+test('channel detail cannot acknowledge a command; old firmware requests an upgrade',()=>{
+ const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0x12);v.setUint8(2,2);v.setUint8(3,6);v.setUint16(4,3,true);v.setUint32(6,info.session,true);v.setUint16(10,1000,true);v.setUint16(12,1000,true);v.setUint16(14,500,true);v.setUint16(16,5,true);v.setUint16(18,400,true);
+ const h=fake();let emitted=false,acked=false;h.addEventListener('detail',()=>emitted=true);h.waiters.set(3,{resolve:()=>acked=true});h.status(v);assert.equal(emitted,true);assert.equal(acked,false);assert.equal(decodeStatus(v).cycle,3);
+ v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v2 MeditationVest/);
+});
