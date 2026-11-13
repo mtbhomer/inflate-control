@@ -32,6 +32,7 @@ export class HubBLE extends EventTarget{
   if(s.channel!==255&&!(this.info.mask&(1<<s.channel)))throw Error('Channel configuration changed; reconnect.');
   this.emit('status',s);
   const waiter=this.waiters.get(s.seq);if(waiter){clearTimeout(waiter.timer);this.waiters.delete(s.seq);waiter.resolve(s);}
+  if(s.reply===6)for(const [seq,w] of this.waiters)if(seq<s.seq){clearTimeout(w.timer);this.waiters.delete(seq);w.resolve({...s,superseded:true});}
  }catch(e){this.emit('error',e.message);this.disconnect();}}
  async command(op,channel=255,pumpMs=0,holdMs=0){
   if(!this.device?.gatt.connected||!this.commandChar||!this.info)throw Error('Connect to the hub first.');
