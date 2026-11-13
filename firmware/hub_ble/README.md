@@ -1,0 +1,101 @@
+# InflateHub BLE v1
+
+ESP32 firmware for the mobile control page. Keep the existing working wiring:
+
+| Channel | Pump | Valve | Sensor |
+|---|---|---|---|
+| CH1, lower left | D22 | D23 | none |
+| CH2, bottom left | D25 | D26 | HX710 OUT D32, SCK D33 |
+
+CH1 retains the working software exchange. CH0/CH3/CH4/CH5 are disabled and
+must remain unplugged; earlier CH3 leads can share CH2 GPIOs. Six channel
+slots exist, but independent GPIO wiring is required before enabling more.
+`PinMap.h` checks distinct valid outputs and rejects partially assigned slots.
+
+## Upload
+
+1. Physically disconnect the actuator battery, keep JP5 open, and disconnect
+   module cables before uploading. USB supplies the ESP32 during upload.
+2. Open `hub_ble.ino` with all five accompanying `.h` files in the same folder.
+   Use the classic **ESP32 Dev Module**, existing serial port, and 115200
+   upload speed. Built with Arduino ESP32 **3.2.1**, its bundled BLE library,
+   and the default partition. No extra Arduino libraries are needed.
+3. Open Serial Monitor at 115200. Expect **INFLATE BLE v1** and advertising
+   **InflateHub**. The old serial `1`/`2` commands are not used by this sketch;
+   serial `x` remains an immediate stop request.
+4. With power off, reconnect the existing module cables. Keep JP5 open with
+   USB. Open the published HTTPS page in **Bluefy**, tap **Connect hub** and
+   choose **InflateHub**. First confirm status and CH2 sensor readings with
+   the actuator battery still disconnected. No cycle starts on connection.
+5. For a powered trial, use the established unworn bench setup, check actual
+   venting, and start with the existing 1 s pump / 1 s hold settings. Check
+   CH1 pump D22 / valve D23 and CH2 pump D25 / valve D26 behavior separately.
+
+## Timing and telemetry
+
+The page sends each cycle's duration to the ESP32. Firmware enforces pump
+**50–2000 ms**, hold **0–10000 ms**, valve lead **100 ms**, and a **2000 ms**
+minimum interval after stopping before another cycle. One channel owns the
+outputs, including hold. Busy commands are discarded; none queue for later.
+The valve remains ON throughout pumping and holding, then both outputs go OFF.
+A zero hold releases immediately after the pump interval.
+
+A dedicated task owns GPIO and deadlines. BLE notifications run separately.
+Accepted finite cycles finish even if Bluetooth disconnects or the phone
+sleeps. Reconnection changes the session nonce and never restarts a cycle.
+Stop takes priority over older queued commands. Expired start commands and
+replayed sequence numbers cannot start a later cycle. Stop requires a working
+connection; the physical battery switch remains the alternative if it is lost.
+
+Only CH2's HX710 is sampled. Raw counts, sample age, frame status and clipping
+are display-only; there is no sensor-loss/pressure/clipping stop. The page's
+vented zero is local display arithmetic, not calibration. No kPa conversion
+is claimed. Stale/invalid data appears as unavailable, not a current reading.
+
+## Protocol
+
+All integer fields are little endian. Payloads fit the default 20-byte ATT
+value limit; a larger negotiated MTU is not required.
+
+- Service `8d5a0001-4c7b-4f45-9d68-8e0c2c970001`
+- Command `8d5a0002-4c7b-4f45-9d68-8e0c2c970001`, WRITE with response
+- Status `8d5a0003-4c7b-4f45-9d68-8e0c2c970001`, READ + NOTIFY, 10 Hz
+- Info `8d5a0004-4c7b-4f45-9d68-8e0c2c970001`, READ
+
+Command (14 bytes): version u8 at 0; operation u8 at 1 (1=start, 2=stop);
+channel u8 at 2 (255 for stop); reserved zero at 3; sequence u16 at 4;
+pump ms u16 at 6; hold ms u16 at 8; session nonce u32 at 10. Stop uses zero
+pump/hold. Sequences start at 1 per connection and do not wrap; reconnect
+before 65535 is exceeded. Malformed or wrong-session packets are ignored.
+
+Status (20 bytes): version u8 at 0; phase u8 at 1 (0=off, 1=select, 2=pump,
+3=hold); active channel u8 at 2 (255=off); sensor flags low nibble and reply
+high nibble at 3; acknowledged sequence u16 at 4; session u32 at 6; signed
+raw count i32 at 10; age ms u16 at 14; phase remaining ms u16 at 16;
+vent interval remaining ms u16 at 18. Age saturates at 65535.
+Flags: 1=has sample, 2=fresh, 4=frame error, 8=ADC endpoint. Replies:
+0=none, 1=accepted, 2=busy, 3=venting, 4=invalid, 5=disabled, 6=stopped,
+7=expired. Duplicate/old sequence numbers leave the previous acknowledgement
+unchanged. Status describes commanded outputs, not measured motor feedback.
+
+Info (20 bytes): version at 0; enabled mask at 1; sensor channel at 2;
+firmware revision at 3; u16 min pump/max pump/max hold/lead/vent at
+4/6/8/10/12; session nonce u32 at 14; flags at 18 (bit 0: sensor display-only,
+bit 1: accepted cycles continue on disconnect); reserved zero at 19.
+
+BLE is nearby control without an application pairing secret. HTTPS protects
+page delivery; it does not authenticate the BLE peripheral or encrypt a
+non-paired GATT link. The page never forwards control or sensor data to a server.
+This version is for the current supervised prototype, not unattended access.
+
+## Checks and limits
+
+Native controller/protocol tests cover enabled pins, duration boundaries,
+zero hold, exclusions, rollover, expiry, replay and stop ordering. Browser
+protocol/transport tests cover binary framing, acknowledgement, old sessions,
+write serialization, stop cancellation and stalled writes. The sketch compiles
+for classic ESP32. Native task scheduling, Bluetooth radio behavior, iPhone
+backgrounding and physical actuator timing still need hardware verification.
+
+The existing serial v4 program is preserved for rollback in
+`firmware/hub_two_module_test`; it is a separate sketch.

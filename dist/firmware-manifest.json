@@ -1,0 +1,38 @@
+{
+  "firmware": "INFLATE BLE v1",
+  "enabledChannels": [
+    1,
+    2
+  ],
+  "gpio": {
+    "CH1": {
+      "pump": 22,
+      "valve": 23
+    },
+    "CH2": {
+      "pump": 25,
+      "valve": 26,
+      "data": 32,
+      "clock": 33
+    }
+  },
+  "cycleLimitsMs": {
+    "minPump": 50,
+    "maxPump": 2000,
+    "maxHold": 10000,
+    "valveLead": 100,
+    "ventInterval": 2000
+  },
+  "sensorDisplayOnly": true,
+  "disconnectBehavior": "accepted cycle finishes on firmware timer; no automatic restart",
+  "assistantUploaded": false,
+  "hardwareBleVerified": false,
+  "files": {
+    "BleProtocol.h": "657624091254ca503f51fb75eb1b5744db4c2e8ebd6dabe8f0227dbfe6c89358",
+    "HubController.h": "025dbc5d6db212ef8d81c73147313cfce7d1adb8eaaa680757c7e753bb10f29c",
+    "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
+    "PinMap.h": "96126ab50791519824dc5e2c09642442a7e6eb90dab5d609fcbd76434072a97f",
+    "README.md": "4e47b2622d220bb9e9134e3f2eddee2d2e72e33dc25a7c5c88a33117a42c04f6",
+    "hub_ble.ino": "3a724e4f542f7560b5e449793b1fc844736ebb7a19e54ad4565a3a4460a3c05a"
+  }
+}
