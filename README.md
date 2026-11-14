@@ -1,4 +1,4 @@
-# MeditationVest control · v2
+# MeditationVest control · v3
 
 Mobile Web Bluetooth control for an ESP32 pneumatic prototype. Static HTML,
 CSS and JavaScript; no backend, framework, telemetry service or build step.
@@ -7,13 +7,14 @@ Open the HTTPS GitHub Pages link in **Bluefy** on iPhone. Upload the matching
 `dist/hub_ble.zip` firmware first. The page offers a clearly marked interactive
 preview that never sends Bluetooth commands.
 
-- CH1: pump D22, valve D23; CH2: pump D25, valve D26, HX710 D32/D33.
+- CH1: pump D22, valve D23, analog sensor D34; CH2: pump D25, valve D26, HX710 D32/D33.
 - Per-channel pump 0.05–2 s, hold 0–10 s; defaults 1 s / 1 s.
 - Link/unlink two boards with shared pump/hold/release times. Unlinked channels
   can run independent patterns. One command synchronizes a linked group.
 - Run once, 1–999 total cycles, or Until Stop. No fixed cooldown after release.
 - Finite patterns finish after BLE disconnect; Until Stop finishes its current
   cycle and cancels repetitions. No automatic start/retry/replay on reconnect.
+- CH1 voltage, 30-second graph, ADC range bar and ADC floor/ceiling display.
 - Stop & release all channels, live CH2 0–100% sensor range, vented zero,
   raw counts, fixed-scale chart and digital clipping indicator.
 - Four additional channels are shown disabled. UI enables them only when
@@ -60,4 +61,6 @@ are required. Never serve this page in an iframe for actual device control.
 The user reported that v1 worked. V2 linking/repetition and simultaneous
 pump current have not been physically verified. Firmware compilation, native
 controller tests, JS transport/protocol tests and simulated UI preview are
-software evidence only. See the firmware README for protocol v2 and details.
+software evidence only. V3 adds CH1 analog telemetry without changing actuator commands.
+The updated UI also supports v2 with a CH1 firmware-upgrade prompt. See the
+firmware README for the extended protocol v2 and details.

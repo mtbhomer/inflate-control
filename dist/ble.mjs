@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=2';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=3';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Fixed-count patterns finish on the hub. Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -29,6 +29,7 @@ export class HubBLE extends EventTarget{
 
  status(value){try{
   const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
+  if(s.kind==='analog'){if(this.info.analogChannel!==s.channel)throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
   if(s.kind==='detail'){if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
   if(s.active&~this.info.mask)throw Error('Channel configuration changed; reconnect.');
   this.emit('status',s);

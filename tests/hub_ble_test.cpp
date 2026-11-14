@@ -5,7 +5,21 @@
 #include "../firmware/hub_ble/PinMap.h"
 #include "../firmware/hub_ble/HubController.h"
 #include "../firmware/hub_ble/BleProtocol.h"
+#include "../firmware/hub_ble/AnalogSensor.h"
 int main(){
+ assert(ANALOG_PIN==34&&ANALOG_CHANNEL==1);
+ AnalogSensor sensor;assert(sensor.flags(0)==0&&sensor.age(0)==65535);
+ for(int i=0;i<3;++i)sensor.add(400+i,200+i,20*i);
+ assert(!sensor.available);sensor.add(403,203,60);
+ assert(sensor.available&&sensor.raw==402&&sensor.millivolts==202&&sensor.flags(60)==3);
+ assert(sensor.flags(559)==3&&sensor.flags(560)==1&&sensor.age(70000)==65535);
+ sensor.add(4095,3100,100);sensor.add(100,200,120);sensor.add(100,200,140);sensor.add(100,200,160);
+ assert(sensor.raw==1099&&(sensor.flags(160)&8)); // A clipped constituent is not hidden by averaging.
+ for(int i=0;i<4;++i)sensor.add(0,0,UINT32_MAX-20+i);
+ assert(sensor.raw==0&&sensor.flags(10)==7&&sensor.age(10)==28); // millis wrap.
+ uint8_t analogBytes[20];encodeAnalog(analogBytes,1,0x12345678,3,402,202,20);
+ const uint8_t expectedAnalog[20]={2,32,1,3,146,1,120,86,52,18,202,0,20,0,0,0,0,0,0,0};
+ for(int i=0;i<20;++i)assert(analogBytes[i]==expectedAnalog[i]);
  assert(ENABLED_MASK==6&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26&&DATA_PIN==32&&CLOCK_PIN==33);
  for(auto mask:{2,4,6})for(auto pump:{50,1000,2000})for(auto hold:{0,1000,10000}){
   HubController c(6);assert(c.start(mask,pump,hold,0,1,20)==Reply::Accepted);

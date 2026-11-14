@@ -6,6 +6,8 @@ constexpr int8_t VALVE_PINS[6] = {-1, 23, 26, -1, -1, -1};
 constexpr uint8_t ENABLED_MASK = (1 << 1) | (1 << 2);
 constexpr uint8_t SENSOR_CHANNEL = 2;
 constexpr int DATA_PIN = 32, CLOCK_PIN = 33;
+constexpr uint8_t ANALOG_CHANNEL = 1;
+constexpr int ANALOG_PIN = 34; // CH1 A12 -> M13/D34, ADC1_CH6, input only.
 // CH1 is the user-confirmed D22 pump / D23 valve override.
 // CH2 is the bottom-left sensor board. CH3 can share its GPIOs: leave unplugged.
 // Future ports require dedicated verified GPIOs before changing ENABLED_MASK.

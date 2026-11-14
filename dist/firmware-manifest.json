@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v2",
+  "firmware": "MEDITATION VEST BLE v3",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -9,7 +9,8 @@
   "gpio": {
     "CH1": {
       "pump": 22,
-      "valve": 23
+      "valve": 23,
+      "analog": 34
     },
     "CH2": {
       "pump": 25,
@@ -32,12 +33,25 @@
   "assistantUploaded": false,
   "v1OperationUserReported": true,
   "v2HardwareVerified": false,
+  "v3HardwareVerified": false,
+  "analogSensor": {
+    "channel": 1,
+    "pin": 34,
+    "supplyV": 3.3,
+    "resolutionBits": 12,
+    "attenuation": "ADC_11db",
+    "averageSamples": 4,
+    "samplePeriodMs": 20,
+    "display": "volts and ADC range; no pressure calibration",
+    "sensorPresenceDetection": false
+  },
   "files": {
-    "BleProtocol.h": "a9dae906d656d1c210f85ec23019c7d30becd6ad28efed3503eff572024f43c0",
+    "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
+    "BleProtocol.h": "48b30cf47e26a936fe726a9615c4f8e17491c40d1ed9dfca4f4695dbbad21deb",
     "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
-    "PinMap.h": "96126ab50791519824dc5e2c09642442a7e6eb90dab5d609fcbd76434072a97f",
-    "README.md": "3657edf7e1c74839b52d4dbde6b9338107d067601f3207d17405c72b802832e9",
-    "hub_ble.ino": "4e125955053ffb3d8c924407938c0814fbe753861560c92746f188c8aa4897e6"
+    "PinMap.h": "ec9481a9984a9c75e150d93d99f58076cf8c674cb5d51d3fa296b65e654496ac",
+    "README.md": "e211b78b7f9ce9ccc66fcaecd1344c6faddc791aeadea4fce51c163c5fa68c14",
+    "hub_ble.ino": "8ed7d9c322a6cb486c573820295e95d57597f04099d293456b6abcefe9ba7b03"
   }
 }

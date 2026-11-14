@@ -35,3 +35,9 @@ inline void encodeDetail(uint8_t*b,const HubController&c,uint8_t ch,uint32_t ses
  const auto&r=c.runs[ch];b[0]=PROTOCOL_VERSION;b[1]=0x10|uint8_t(r.phase);b[2]=ch;b[3]=r.group;put16(b+4,r.cycle);put32(b+6,session);
  put16(b+10,r.pumpMs);put16(b+12,r.holdMs);put16(b+14,r.releaseMs);put16(b+16,r.repeats);put16(b+18,c.remaining(ch,now));
 }
+// Additive firmware-v3 telemetry; control packets and protocol version stay v2.
+inline void encodeAnalog(uint8_t*b,uint8_t channel,uint32_t session,uint8_t flags,uint16_t raw,uint16_t mv,uint16_t age){
+ for(unsigned i=0;i<20;++i)b[i]=0;
+ b[0]=PROTOCOL_VERSION;b[1]=0x20;b[2]=channel;b[3]=flags;
+ put16(b+4,raw);put32(b+6,session);put16(b+10,mv);put16(b+12,age);
+}

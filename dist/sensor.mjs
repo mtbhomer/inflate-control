@@ -7,3 +7,9 @@ export function sensorRange(raw,baseline){
  const percent=Math.max(0,Math.min(100,(raw-baseline)/(ADC_MAX-baseline)*100));
  return {percent,clipped,near:percent>=95};
 }
+// ADC voltage display only; a floating/disconnected analog input can still read.
+export function analogReading(sample,elapsed=0){
+ if(!sample?.fresh||!Number.isFinite(elapsed)||elapsed<0||sample.age+elapsed>=500)return null;
+ return {volts:sample.millivolts/1000,percent:sample.raw/4095*100,
+  low:Boolean(sample.flags&4),high:Boolean(sample.flags&8),near:sample.raw>=3890};
+}

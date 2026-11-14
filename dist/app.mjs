@@ -1,16 +1,17 @@
-import {HubBLE} from './ble.mjs?v=2';
-import {PHASES,REPLIES} from './protocol.mjs?v=2';
-import {sensorRange,validZero} from './sensor.mjs?v=2';
+import {HubBLE} from './ble.mjs?v=3';
+import {PHASES,REPLIES} from './protocol.mjs?v=3';
+import {sensorRange,validZero,analogReading} from './sensor.mjs?v=3';
 const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el.textContent!==value)el.textContent=value;};
 const hub=new HubBLE();
-const positions=['Upper left','Lower left · sensorless','Bottom left · with sensor','Bottom right','Lower right','Upper right'];
+const positions=['Upper left','Lower left · analog sensor','Bottom left · HX710 sensor','Bottom right','Lower right','Upper right'];
 const defaults=()=>({pump:1000,hold:1000,release:1000,count:3,mode:'count'});
 let settings=Array.from({length:6},defaults),pair=defaults();
 function clean(x){const d=defaults();for(const [k,min,max]of [['pump',50,2000],['hold',0,10000],['release',0,10000],['count',1,999]])if(Number.isInteger(x?.[k])&&x[k]>=min&&x[k]<=max)d[k]=x[k];d.mode=x?.mode==='forever'?'forever':'count';return d;}
 try{const v=JSON.parse(localStorage.getItem('inflate.patterns.v2'));if(v?.channels?.length===6){settings=v.channels.map(clean);pair=clean(v.pair);}else{const old=JSON.parse(localStorage.getItem('inflate.times.v1'));if(old?.length===6)settings=old.map(clean);}}catch{}
 let online=false,connecting=false,demo=false,pending=false,stopPending=false,info=null,status=null,received=0,baseline=null,history=[],lastHistory=0,staleShown=false;
 let linked=false,pairChannels=[1,2],details=Array(6).fill(null),simRuns=Array(6).fill(null);
+let analogStatus=null,analogReceived=0,analogHistory=[],lastAnalogHistory=0;
 const number=new Intl.NumberFormat('en-US');
 const maskOf=chs=>chs.reduce((m,ch)=>m|(1<<ch),0);
 const pairMask=()=>maskOf(pairChannels);
@@ -34,6 +35,29 @@ function usable(){return online&&status&&performance.now()-received<1000;}
 function telemetry(s){status=s;received=performance.now();staleShown=false;
  if(s.fresh&&received-lastHistory>=80){history.push({t:received,y:s.raw});lastHistory=received;}
  history=history.filter(p=>received-p.t<30000);render();
+}
+function analogTelemetry(s){
+ analogStatus=s;analogReceived=performance.now();
+ if(s.fresh&&analogReceived-lastAnalogHistory>=60){analogHistory.push({t:analogReceived,y:s.millivolts});lastAnalogHistory=analogReceived;}
+ analogHistory=analogHistory.filter(p=>analogReceived-p.t<30000);render();
+}
+function resetAnalog(){analogStatus=null;analogReceived=0;analogHistory=[];lastAnalogHistory=0;}
+function renderAnalog(connectionFresh){
+ const supported=info?.analogChannel===1,now=performance.now();
+ const reading=connectionFresh&&supported?analogReading(analogStatus,now-analogReceived):null;
+ $('analogUpgrade').hidden=!online||supported;
+ setText('analogValue',reading?`${reading.volts.toFixed(3)} V`:'—');
+ setText('analogState',!online?'Waiting for hub':!supported?'Firmware update':!connectionFresh?'Connection stale':!analogStatus||!(analogStatus.flags&1)?'Waiting for data':!reading?'Stale':reading.high?'ADC CEILING':reading.low?'ADC FLOOR':reading.near?'Near ADC ceiling':demo?'Preview signal':'Live ADC');
+ $('analogPanel').classList.toggle('clipped',Boolean(reading&&(reading.high||reading.low)));
+ $('analogPanel').classList.toggle('near',Boolean(reading?.near));
+ $('analogFill').style.width=reading?`${reading.percent}%`:'0%';
+ $('analogMeter').setAttribute('aria-valuenow',reading?.percent.toFixed(1)??'0');
+ $('analogMeter').setAttribute('aria-valuetext',reading?`${reading.percent.toFixed(1)} percent of ADC range`:'No current reading');
+ setText('analogAge',reading?`${Math.round(analogStatus.age+now-analogReceived)} ms · CH1`:'CH1 · display only');
+ setText('analogRaw',reading?`ADC ${analogStatus.raw} / 4095 · ${reading.percent.toFixed(1)}% of ADC range`:'');
+ const pts=analogHistory.filter(p=>now-p.t<=30000);let path='';
+ pts.forEach((p,i)=>{const x=32+328*(1-(now-p.t)/30000),y=104-Math.max(0,Math.min(3300,p.y))/3300*96;path+=`${!i||p.t-pts[i-1].t>600?'M':'L'}${x.toFixed(1)},${y.toFixed(1)} `;});
+ $('analogChartLine').setAttribute('d',path);$('analogChartEmpty').style.display=pts.length>1?'none':'';
 }
 function renderFields(id,locked,canRun){const t=id==='pair'?pair:settings[id];for(const key of ['pump','hold','release','count','mode'])$(`${key}-${id}`).disabled=locked;
  $(`run-${id}`).disabled=!canRun;$(`repeat-${id}`).disabled=!canRun;
@@ -77,7 +101,7 @@ function render(){
  $('rangeMeter').setAttribute('aria-valuenow',range?.percent?.toFixed(1)??'0');$('rangeMeter').setAttribute('aria-valuetext',range?.percent!==null&&range?.percent!==undefined?`${range.percent.toFixed(1)} percent of sensor range`:'Set vented zero');
  setText('sampleAge',sensorFresh?`${Math.round(status.age)} ms · CH2 only`:'CH2 sensor only');setText('rawValue',sensorFresh?`Raw ${number.format(status.raw)}`:'');
  $('zero').disabled=!sensorFresh||Boolean(active)||!validZero(status?.raw);$('clearZero').hidden=baseline===null;
- drawChart();
+ renderAnalog(fresh);drawChart();
 }
 function drawChart(){const now=performance.now(),pts=baseline===null?[]:history.filter(p=>now-p.t<=30000);$('chartEmpty').style.display=pts.length>1?'none':'';setText('chartEmpty',baseline===null?'Set vented zero to start the chart':'Live readings appear here');
  if(pts.length<2){$('chartLine').setAttribute('d','');$('chartArea').setAttribute('d','');return;}
@@ -102,20 +126,21 @@ async function stop(){if(!online||stopPending)return;stopPending=true;render();
  catch(e){message(e.message);}finally{stopPending=false;render();}
 }
 $('connect').addEventListener('click',async()=>{if(online){hub.disconnect();return;}if(connecting)return;connecting=true;message('');render();try{await hub.connect();}catch(e){message(e.name==='NotFoundError'?'No hub selected. Turn on MeditationVest and try again.':e.message);}finally{connecting=false;render();}});
-hub.addEventListener('ready',e=>{online=true;demo=false;info=e.detail.info;status=null;details.fill(null);baseline=null;history=[];pairChoices();setText('deviceName',e.detail.name);setText('connectionHint','Timings and patterns run on the ESP32.');render();});
+hub.addEventListener('ready',e=>{online=true;demo=false;resetAnalog();info=e.detail.info;status=null;details.fill(null);baseline=null;history=[];pairChoices();setText('deviceName',e.detail.name);setText('connectionHint','Timings and patterns run on the ESP32.');render();});
 hub.addEventListener('status',e=>telemetry(e.detail));
+hub.addEventListener('analog',e=>analogTelemetry(e.detail));
 hub.addEventListener('detail',e=>{details[e.detail.channel]={...e.detail,received:performance.now()};render();});
 hub.addEventListener('error',e=>message(e.detail));
-hub.addEventListener('disconnected',e=>{online=false;info=null;status=null;baseline=null;details.fill(null);setText('deviceName','MeditationVest');setText('connectionHint','Open in Bluefy on your iPhone.');message(e.detail);render();});
+hub.addEventListener('disconnected',e=>{online=false;info=null;status=null;baseline=null;resetAnalog();details.fill(null);setText('deviceName','MeditationVest');setText('connectionHint','Open in Bluefy on your iPhone.');message(e.detail);render();});
 $('stop').addEventListener('click',stop);
 $('zero').addEventListener('click',()=>{if(!usable()||!status.fresh||status.active||!validZero(status.raw))return;baseline=status.raw;history=[];message('Vented zero set. 100% is the digital clipping limit, not a pressure or inflation target.');render();});
 $('clearZero').addEventListener('click',()=>{baseline=null;history=[];render();});
 for(let i=0;i<2;i++)$(`link-${i}`).addEventListener('change',()=>{pairChannels[i]=Number($(`link-${i}`).value);render();});
 $('linkToggle').addEventListener('click',()=>{if(pending||(online&&!usable())||(status?.active&pairMask())||pairChannels[0]===pairChannels[1])return;linked=!linked;message(linked?'Boards linked. Use the shared times below; both start and release together.':'Boards unlinked. Their individual settings are restored.');render();});
 $('preview').addEventListener('click',()=>{
- if(demo){demo=false;online=false;info=null;status=null;history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','Open in Bluefy on your iPhone.');render();return;}
+ if(demo){demo=false;online=false;resetAnalog();info=null;status=null;history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','Open in Bluefy on your iPhone.');render();return;}
  if(online||connecting)return;
- demo=true;online=true;info={mask:6};baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','Explore the controls.');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
+ demo=true;online=true;resetAnalog();info={mask:6,firmware:3,analogChannel:1};baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','Explore the controls.');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
 });
 function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).fill(0);let active=0;
  for(let ch=0;ch<6;ch++){let r=simRuns[ch];if(!r)continue;let elapsed=now-r.start;const total=100+r.pump+r.hold;
@@ -128,6 +153,9 @@ function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).
  const r=simRuns[2],rise=r&&r.phase!==4?(r.phase===1?0:r.phase===2?Math.min(1,(now-r.start-100)/r.pump):1):0;
  const raw=Math.min(8388607,Math.round(1764600+Math.sin(now/950)*90+rise*6624100));
  telemetry({kind:'summary',active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true});
+ const a=simRuns[1],level=a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
+ const mv=Math.round(200+level*2500+Math.sin(now/800)*3);
+ analogTelemetry({kind:'analog',channel:1,flags:3,raw:Math.round(mv/3100*4095),millivolts:mv,age:20,fresh:true});
 }
 cards();render();
 setInterval(()=>{if(demo)tickDemo();else{if(online&&received&&performance.now()-received>1500&&!staleShown){staleShown=true;message('Live status stopped arriving. New starts are disabled. Stop is still available; check its confirmation.');}render();}},100);

@@ -9,6 +9,7 @@
 #include "HubController.h"
 #include "BleProtocol.h"
 #include "Hx710Frame.h"
+#include "AnalogSensor.h"
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "This pin map requires a classic ESP32."
 #endif
@@ -28,11 +29,12 @@ Reply reply=Reply::None;
 uint32_t currentSession=0,lastSample=0,lastAttempt=0;
 int32_t raw=0;
 bool haveSample=false,frameError=false;
+AnalogSensor analogSensor; // Owned only by loop(); never blocks the GPIO task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=SENSOR_CHANNEL;b[3]=2;
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=SENSOR_CHANNEL;b[3]=3;
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
- put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=15;
+ put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=31;b[19]=ANALOG_CHANNEL;
 }
 class InfoCallbacks:public BLECharacteristicCallbacks{
  void onRead(BLECharacteristic*c) override {uint8_t b[20];fillInfo(b);c->setValue(b,20);}
@@ -102,7 +104,8 @@ void setup(){
    pinMode(PUMP_PINS[ch],OUTPUT);pinMode(VALVE_PINS[ch],OUTPUT);
  }
  gpio_set_level((gpio_num_t)CLOCK_PIN,0);pinMode(CLOCK_PIN,OUTPUT);pinMode(DATA_PIN,INPUT_PULLUP);
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v2: CH1 pump=D22 valve=D23; CH2 pump=D25 valve=D26; OUT=D32 SCK=D33. x stops.");
+ pinMode(ANALOG_PIN,INPUT);analogReadResolution(12);analogSetPinAttenuation(ANALOG_PIN,ADC_11db);
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v3: CH1 pump=D22 valve=D23 analog=D34; CH2 pump=D25 valve=D26; OUT=D32 SCK=D33. x stops.");
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}
@@ -119,12 +122,25 @@ void setup(){
 void loop(){
  for(unsigned n=0;n<32 && Serial.available();++n){char c=Serial.read();if(c=='x'||c=='X')serialStop.store(true);}
  if(restartAdvertising.exchange(false))BLEDevice::startAdvertising();
+ static uint32_t lastAnalogAttempt=0;
+ if(millis()-lastAnalogAttempt>=20){
+   lastAnalogAttempt=millis();
+   // Arduino's raw and calibrated-millivolt APIs perform separate conversions.
+   const uint16_t adcValue=analogRead(ANALOG_PIN);
+   const uint32_t mv=analogReadMilliVolts(ANALOG_PIN);
+   analogSensor.add(adcValue,mv>65535?65535:uint16_t(mv),millis());
+ }
  static uint32_t lastNotify=0;
  if(statusChar && millis()-lastNotify>=100){
    lastNotify=millis();uint8_t b[20],details[6][20];
    portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));portEXIT_CRITICAL(&stateMux);
    statusChar->setValue(b,20);if(connected.load())statusChar->notify();
    for(uint8_t ch=0;ch<6 && connected.load();++ch)if(ENABLED_MASK&(1<<ch)){statusChar->setValue(details[ch],20);statusChar->notify();}
+   if(connected.load()){
+     uint8_t analogBytes[20];const uint32_t now=millis();
+     encodeAnalog(analogBytes,ANALOG_CHANNEL,session.load(),analogSensor.flags(now),analogSensor.raw,analogSensor.millivolts,analogSensor.age(now));
+     statusChar->setValue(analogBytes,20);statusChar->notify();
+   }
    statusChar->setValue(b,20); // Reads return the summary, never an arbitrary channel detail.
  }
  delay(5); // Only BLE/telemetry task sleeps; control timers run independently.
