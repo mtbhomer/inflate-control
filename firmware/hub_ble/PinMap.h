@@ -1,35 +1,23 @@
 #pragma once
 #include <stdint.h>
-// Current working wiring, 13 November 2026. -1 means NOT ASSIGNED.
-constexpr int8_t PUMP_PINS[6] = {-1, 22, 25, -1, -1, -1};
-constexpr int8_t VALVE_PINS[6] = {-1, 23, 26, -1, -1, -1};
-constexpr uint8_t ENABLED_MASK = (1 << 1) | (1 << 2);
-constexpr uint8_t ANALOG_MASK = (1 << 1) | (1 << 2);
-constexpr int8_t ANALOG_PINS[6] = {-1,34,32,-1,-1,-1};
-constexpr int UNUSED_CLOCK_PIN = 33; // Old CH2 SCK: input, no pull and no clock pulses.
-// CH1 is the user-confirmed D22 pump / D23 valve override.
-// CH1: new analog OUT D34. CH2: replacement analog OUT reuses D32.
-// CH2 is the bottom-left board. CH3 can share its GPIOs: leave unplugged.
-// Future ports require dedicated verified GPIOs before changing ENABLED_MASK.
+// Six-channel hub plan, 14 November 2026. Confirm D16/D17 in USB-only checks.
+constexpr int8_t PUMP_PINS[6] = {4, 22, 25, 19, 16, 13};
+constexpr int8_t VALVE_PINS[6] = {17, 23, 26, 18, 27, 14};
+constexpr int8_t ANALOG_PINS[6] = {35, 34, 32, 36, 39, 33};
+constexpr uint8_t ENABLED_MASK = 63;
+constexpr uint8_t ANALOG_MASK = 63;
 constexpr bool validPinMap() {
-  for (int i=0;i<6;++i) {
-    if (!(ENABLED_MASK & (1<<i))) {
-      if (PUMP_PINS[i]!=-1 || VALVE_PINS[i]!=-1) return false;
-      continue;
-    }
-    const int pins[2]={PUMP_PINS[i],VALVE_PINS[i]};
-    for (int k=0;k<2;++k) {
-      int p=pins[k];
-      if (p<0 || p>33 || (p>=6 && p<=11) || p==UNUSED_CLOCK_PIN) return false;
-      for(int a=0;a<6;++a)if((ANALOG_MASK&(1<<a))&&p==ANALOG_PINS[a])return false;
-      if (PUMP_PINS[i]==VALVE_PINS[i]) return false;
-      for (int j=0;j<i;++j) if ((ENABLED_MASK&(1<<j)) && (p==PUMP_PINS[j] || p==VALVE_PINS[j])) return false;
-    }
+ int8_t assigned[18]={};unsigned count=0;
+ for(unsigned ch=0;ch<6;++ch){
+  const int values[3]={PUMP_PINS[ch],VALVE_PINS[ch],ANALOG_PINS[ch]};
+  for(unsigned role=0;role<3;++role){
+   const int pin=values[role];
+   if(role==2){if(pin!=32&&pin!=33&&pin!=34&&pin!=35&&pin!=36&&pin!=39)return false;}
+   else if(pin<4||pin>27||(pin>=5&&pin<=12)||pin==15||pin==20||pin==24)return false;
+   for(unsigned i=0;i<count;++i)if(assigned[i]==pin)return false;
+   assigned[count++]=pin;
   }
-  for(int ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
-    if(!(ENABLED_MASK&(1<<ch))||ANALOG_PINS[ch]<32||ANALOG_PINS[ch]>39||ANALOG_PINS[ch]==UNUSED_CLOCK_PIN)return false;
-    for(int j=0;j<ch;++j)if((ANALOG_MASK&(1<<j))&&ANALOG_PINS[j]==ANALOG_PINS[ch])return false;
-  }else if(ANALOG_PINS[ch]!=-1)return false;
-  return true;
+ }
+ return ENABLED_MASK==63&&ANALOG_MASK==63&&count==18;
 }
-static_assert(validPinMap(), "Assign distinct output-capable GPIOs to enabled channels only");
+static_assert(validPinMap(), "Six channels require distinct output GPIOs and ADC1 inputs");

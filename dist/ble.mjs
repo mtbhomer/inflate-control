@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=4';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=5';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Fixed-count patterns finish on the hub. Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}

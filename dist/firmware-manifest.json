@@ -1,12 +1,21 @@
 {
-  "firmware": "MEDITATION VEST BLE v4",
+  "firmware": "MEDITATION VEST BLE v5",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
+    0,
     1,
-    2
+    2,
+    3,
+    4,
+    5
   ],
   "gpio": {
+    "CH0": {
+      "pump": 4,
+      "valve": 17,
+      "analog": 35
+    },
     "CH1": {
       "pump": 22,
       "valve": 23,
@@ -17,8 +26,27 @@
       "valve": 26,
       "analog": 32
     },
-    "unusedClock": 33
+    "CH3": {
+      "pump": 19,
+      "valve": 18,
+      "analog": 36
+    },
+    "CH4": {
+      "pump": 16,
+      "valve": 27,
+      "analog": 39
+    },
+    "CH5": {
+      "pump": 13,
+      "valve": 14,
+      "analog": 33
+    }
   },
+  "conditionalBoardPins": [
+    16,
+    17
+  ],
+  "boardPinCheck": "Verify D16/D17 at the headers with actuator battery physically disconnected before power testing",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -31,25 +59,30 @@
   "sensorDisplayOnly": true,
   "disconnectBehavior": "finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
   "assistantUploaded": false,
-  "v1OperationUserReported": true,
-  "v2HardwareVerified": false,
-  "v3HardwareVerified": false,
-  "v4HardwareVerified": false,
-  "ch2ReplacementUserReported": false,
+  "sixChannelHardwareVerified": false,
   "analogSensors": {
     "channels": [
+      0,
       1,
-      2
+      2,
+      3,
+      4,
+      5
     ],
     "pins": [
+      35,
       34,
-      32
+      32,
+      36,
+      39,
+      33
     ],
     "supplyV": 3.3,
     "resolutionBits": 12,
     "attenuation": "ADC_11db",
     "averageSamples": 4,
     "samplePeriodMs": 20,
+    "nominalChannelNotificationPeriodMs": 300,
     "display": "volts and ADC range; no pressure calibration",
     "sensorPresenceDetection": false
   },
@@ -58,8 +91,8 @@
     "BleProtocol.h": "48b30cf47e26a936fe726a9615c4f8e17491c40d1ed9dfca4f4695dbbad21deb",
     "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
-    "PinMap.h": "c05da852b46329b6c6c445128f8e18ecf09278e933c8a711e06899620c2ed9b8",
-    "README.md": "b60476e1700867498806257169adf13638ed3420c863ceb44d10ad155f66bbe1",
-    "hub_ble.ino": "7172ddc0ab50705afab4dd599f59470eefb31155bc391c68616150a093e506ff"
+    "PinMap.h": "cc637fb6ad6f3578e7a90b7cba024c7db86ca1fcdf4ba79872e8f8ae5239dce3",
+    "README.md": "e5b614ecd2252bc4c65830252ebfd9158af7d08e3cad19db2b3b14cda3cf7ca5",
+    "hub_ble.ino": "cacfd13496f498918788556f9cc72611a640517a16105b8758d70a7a9663b853"
   }
 }

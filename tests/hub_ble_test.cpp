@@ -7,7 +7,7 @@
 #include "../firmware/hub_ble/BleProtocol.h"
 #include "../firmware/hub_ble/AnalogSensor.h"
 int main(){
- assert(ANALOG_MASK==6&&ANALOG_PINS[1]==34&&ANALOG_PINS[2]==32&&UNUSED_CLOCK_PIN==33);
+ assert(ANALOG_MASK==63&&ANALOG_PINS[1]==34&&ANALOG_PINS[2]==32&&validPinMap());
  AnalogSensor sensor;assert(sensor.flags(0)==0&&sensor.age(0)==65535);
  for(int i=0;i<3;++i)sensor.add(400+i,200+i,20*i);
  assert(!sensor.available);sensor.add(403,203,60);
@@ -25,7 +25,7 @@ int main(){
  assert(ch2Bytes[2]==2&&read16(ch2Bytes+4)==2000&&read16(ch2Bytes+10)==1500);
  const uint8_t expectedAnalog[20]={2,32,1,3,146,1,120,86,52,18,202,0,20,0,0,0,0,0,0,0};
  for(int i=0;i<20;++i)assert(analogBytes[i]==expectedAnalog[i]);
- assert(ENABLED_MASK==6&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
+ assert(ENABLED_MASK==63&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
  for(auto mask:{2,4,6})for(auto pump:{50,1000,2000})for(auto hold:{0,1000,10000}){
   HubController c(6);assert(c.start(mask,pump,hold,0,1,20)==Reply::Accepted);
   for(uint32_t t=20;t<=uint32_t(120+pump+hold);++t){
@@ -76,5 +76,12 @@ int main(){
  sc.update(8100);assert(!sc.activeMask());
  // Any of the six slots can be enabled later, without sharing controller state.
  HubController six(63);for(unsigned ch=0;ch<6;++ch)assert(six.start(1<<ch,50,0,0,1,ch*10)==Reply::Accepted);six.update(300);assert(!six.activeMask());
+ // Every enabled channel returns a separate analog sample and paired outputs.
+ AnalogSensor sensors[6];HubController all(ENABLED_MASK);
+ assert(all.start(63,100,200,0,1,0)==Reply::Accepted);
+ for(unsigned ch=0;ch<6;++ch){for(int n=0;n<4;n++)sensors[ch].add(100+ch,200+ch,20*n);uint8_t frame[20];encodeAnalog(frame,ch,1,3,sensors[ch].raw,sensors[ch].millivolts,0);assert(frame[2]==ch&&read16(frame+4)==100+ch);}
+ all.update(100);for(unsigned ch=0;ch<6;++ch)assert(all.pump(ch)&&all.valve(ch));
+ all.update(200);for(unsigned ch=0;ch<6;++ch)assert(!all.pump(ch)&&all.valve(ch));
+ all.stop();for(unsigned ch=0;ch<6;++ch)assert(!all.pump(ch)&&!all.valve(ch));
  puts("PASS: GPIO map, linked timing, independent overlap, atomic busy, repeat count/continuous/disconnect, immediate restart, zero release, delayed scheduling, millis wrap, protocol framing, session/replay/expiry/Stop, telemetry and six slots.");
 }

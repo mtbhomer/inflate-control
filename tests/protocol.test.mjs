@@ -40,7 +40,7 @@ test('summary decodes six simultaneous phases and rejects inconsistent masks',()
 test('channel detail cannot acknowledge a command; old firmware requests an upgrade',()=>{
  const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0x12);v.setUint8(2,2);v.setUint8(3,6);v.setUint16(4,3,true);v.setUint32(6,info.session,true);v.setUint16(10,1000,true);v.setUint16(12,1000,true);v.setUint16(14,500,true);v.setUint16(16,5,true);v.setUint16(18,400,true);
  const h=fake();let emitted=false,acked=false;h.addEventListener('detail',()=>emitted=true);h.waiters.set(3,{resolve:()=>acked=true});h.status(v);assert.equal(emitted,true);assert.equal(acked,false);assert.equal(decodeStatus(v).cycle,3);
- v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v4 MeditationVest/);
+ v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v5 MeditationVest/);
 });
 
 import {analogReading} from '../dist/sensor.mjs';
@@ -61,7 +61,7 @@ test('analog golden packet decodes volts and ADC limits without pressure scaling
  assert.equal(analogReading({...s,raw:0,flags:7}).low,true);
 });
 test('analog packets reject malformed data and cannot acknowledge or refresh control status',()=>{
- for(const [offset,value]of [[2,3],[3,16],[14,1]]){const v=analogPacket();v.setUint8(offset,value);assert.throws(()=>decodeStatus(v));}
+ for(const [offset,value]of [[2,6],[3,16],[14,1]]){const v=analogPacket();v.setUint8(offset,value);assert.throws(()=>decodeStatus(v));}
  const malformed=analogPacket();malformed.setUint16(4,4096,true);assert.throws(()=>decodeStatus(malformed));
  const h=fake();h.info={...info,analogChannels:[1]};let analog=0,summaries=0,acked=false;
  h.addEventListener('analog',()=>analog++);h.addEventListener('status',()=>summaries++);h.waiters.set(402,{resolve:()=>acked=true});
@@ -82,4 +82,15 @@ test('two analog streams keep channel identity and independent freshness',()=>{
  assert.equal(seen.size,2);assert.equal(analogReading(seen.get(1)).volts,.202);assert.equal(analogReading(seen.get(2)).volts,1.5);
  const stale=analogPacket();stale.setUint16(12,500,true);h.status(stale);
  assert.equal(analogReading(seen.get(1)),null);assert.equal(analogReading(seen.get(2)).volts,1.5);
+});
+
+test('v5 exposes six independent analog inputs and rejects mismatched masks',()=>{
+ const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,63);v.setUint8(2,255);v.setUint8(3,5);
+ for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,10000]])v.setUint16(p,n,true);
+ v.setUint32(14,info.session,true);v.setUint8(18,31);v.setUint8(19,63);
+ const cap=decodeInfo(v);assert.deepEqual(cap.analogChannels,[0,1,2,3,4,5]);assert.equal(cap.hxChannel,null);
+ const h=fake();h.info=cap;const seen=new Map();h.addEventListener('analog',e=>seen.set(e.detail.channel,e.detail));
+ for(let ch=0;ch<6;ch++){const b=analogPacket();b.setUint8(2,ch);b.setUint16(10,200+ch*100,true);h.status(b);}
+ assert.equal(seen.size,6);for(let ch=0;ch<6;ch++)assert.equal(seen.get(ch).millivolts,200+ch*100);
+ v.setUint8(19,6);assert.throws(()=>decodeInfo(v));
 });

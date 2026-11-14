@@ -29,7 +29,7 @@ uint32_t currentSession=0;
 AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=4; // No HX710 sensor.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=5; // Six independent analog sensors.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
  put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=31;b[19]=ANALOG_MASK;
 }
@@ -87,12 +87,11 @@ void setup(){
    gpio_set_level((gpio_num_t)PUMP_PINS[ch],0);gpio_set_level((gpio_num_t)VALVE_PINS[ch],0);
    pinMode(PUMP_PINS[ch],OUTPUT);pinMode(VALVE_PINS[ch],OUTPUT);
  }
- pinMode(UNUSED_CLOCK_PIN,INPUT); // Do not drive the former clock wire.
  analogReadResolution(12);
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v4: CH1 pump=D22 valve=D23 analog=D34; CH2 pump=D25 valve=D26 analog=D32; D33 unused. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v5: six analog channels; verify D16/D17 with actuator battery disconnected. x stops.");
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}
@@ -119,15 +118,17 @@ void loop(){
      analogSensors[ch].add(adcValue,mv>65535?65535:uint16_t(mv),millis());
    }
  }
- static uint32_t lastNotify=0;
- if(statusChar && millis()-lastNotify>=100){
+ static uint32_t lastNotify=0;static uint8_t telemetryChannel=0;
+ if(statusChar && millis()-lastNotify>=50){
    lastNotify=millis();uint8_t b[20],details[6][20];
    portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));portEXIT_CRITICAL(&stateMux);
    statusChar->setValue(b,20);if(connected.load())statusChar->notify();
-   for(uint8_t ch=0;ch<6 && connected.load();++ch)if(ENABLED_MASK&(1<<ch)){statusChar->setValue(details[ch],20);statusChar->notify();}
-   for(uint8_t ch=0;ch<6 && connected.load();++ch)if(ANALOG_MASK&(1<<ch)){
-     uint8_t analogBytes[20];const uint32_t now=millis();
-     const auto &sensor=analogSensors[ch];
+   // Three notifications per 50 ms: summary plus one channel's detail and
+   // analog frame. Six channels refresh about every 300 ms without flooding BLE.
+   if(connected.load()){
+     const uint8_t ch=telemetryChannel;telemetryChannel=(telemetryChannel+1)%6;
+     statusChar->setValue(details[ch],20);statusChar->notify();
+     uint8_t analogBytes[20];const uint32_t now=millis();const auto &sensor=analogSensors[ch];
      encodeAnalog(analogBytes,ch,session.load(),sensor.flags(now),sensor.raw,sensor.millivolts,sensor.age(now));
      statusChar->setValue(analogBytes,20);statusChar->notify();
    }
