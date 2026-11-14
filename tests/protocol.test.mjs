@@ -40,7 +40,7 @@ test('summary decodes six simultaneous phases and rejects inconsistent masks',()
 test('channel detail cannot acknowledge a command; old firmware requests an upgrade',()=>{
  const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0x12);v.setUint8(2,2);v.setUint8(3,6);v.setUint16(4,3,true);v.setUint32(6,info.session,true);v.setUint16(10,1000,true);v.setUint16(12,1000,true);v.setUint16(14,500,true);v.setUint16(16,5,true);v.setUint16(18,400,true);
  const h=fake();let emitted=false,acked=false;h.addEventListener('detail',()=>emitted=true);h.waiters.set(3,{resolve:()=>acked=true});h.status(v);assert.equal(emitted,true);assert.equal(acked,false);assert.equal(decodeStatus(v).cycle,3);
- v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v3 MeditationVest/);
+ v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v4 MeditationVest/);
 });
 
 import {analogReading} from '../dist/sensor.mjs';
@@ -48,8 +48,8 @@ const analogPacket=()=>new DataView(Uint8Array.from([2,32,1,3,146,1,120,86,52,18
 test('v2 remains usable and v3 advertises CH1 analog data explicitly',()=>{
  const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,6);v.setUint8(2,2);v.setUint8(3,2);
  for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,10000]])v.setUint16(p,n,true);
- v.setUint32(14,info.session,true);v.setUint8(18,15);assert.equal(decodeInfo(v).analogChannel,null);
- v.setUint8(3,3);v.setUint8(18,31);v.setUint8(19,1);assert.equal(decodeInfo(v).analogChannel,1);
+ v.setUint32(14,info.session,true);v.setUint8(18,15);assert.equal(decodeInfo(v).analogChannels.length,0);
+ v.setUint8(3,3);v.setUint8(18,31);v.setUint8(19,1);assert.equal(decodeInfo(v).analogChannels[0],1);
  v.setUint8(19,2);assert.throws(()=>decodeInfo(v));
 });
 test('analog golden packet decodes volts and ADC limits without pressure scaling',()=>{
@@ -61,10 +61,25 @@ test('analog golden packet decodes volts and ADC limits without pressure scaling
  assert.equal(analogReading({...s,raw:0,flags:7}).low,true);
 });
 test('analog packets reject malformed data and cannot acknowledge or refresh control status',()=>{
- for(const [offset,value]of [[2,2],[3,16],[14,1]]){const v=analogPacket();v.setUint8(offset,value);assert.throws(()=>decodeStatus(v));}
+ for(const [offset,value]of [[2,3],[3,16],[14,1]]){const v=analogPacket();v.setUint8(offset,value);assert.throws(()=>decodeStatus(v));}
  const malformed=analogPacket();malformed.setUint16(4,4096,true);assert.throws(()=>decodeStatus(malformed));
- const h=fake();h.info={...info,analogChannel:1};let analog=0,summaries=0,acked=false;
+ const h=fake();h.info={...info,analogChannels:[1]};let analog=0,summaries=0,acked=false;
  h.addEventListener('analog',()=>analog++);h.addEventListener('status',()=>summaries++);h.waiters.set(402,{resolve:()=>acked=true});
  h.status(analogPacket());assert.equal(analog,1);assert.equal(summaries,0);assert.equal(acked,false);
  const old=analogPacket();old.setUint32(6,info.session+1,true);h.status(old);assert.equal(analog,1);
+});
+
+test('v4 advertises two analog channels and no HX710; legacy capabilities stay distinct',()=>{
+ const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,6);v.setUint8(2,255);v.setUint8(3,4);
+ for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,10000]])v.setUint16(p,n,true);
+ v.setUint32(14,info.session,true);v.setUint8(18,31);v.setUint8(19,6);
+ const cap=decodeInfo(v);assert.deepEqual(cap.analogChannels,[1,2]);assert.equal(cap.hxChannel,null);
+ v.setUint8(2,2);assert.throws(()=>decodeInfo(v));v.setUint8(2,255);v.setUint8(19,2);assert.throws(()=>decodeInfo(v));
+});
+test('two analog streams keep channel identity and independent freshness',()=>{
+ const h=fake();h.info={...info,analogChannels:[1,2]};const seen=new Map();h.addEventListener('analog',e=>seen.set(e.detail.channel,e.detail));
+ h.status(analogPacket());const second=analogPacket();second.setUint8(2,2);second.setUint16(4,2000,true);second.setUint16(10,1500,true);h.status(second);
+ assert.equal(seen.size,2);assert.equal(analogReading(seen.get(1)).volts,.202);assert.equal(analogReading(seen.get(2)).volts,1.5);
+ const stale=analogPacket();stale.setUint16(12,500,true);h.status(stale);
+ assert.equal(analogReading(seen.get(1)),null);assert.equal(analogReading(seen.get(2)).volts,1.5);
 });

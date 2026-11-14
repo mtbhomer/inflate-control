@@ -8,7 +8,6 @@
 #include "PinMap.h"
 #include "HubController.h"
 #include "BleProtocol.h"
-#include "Hx710Frame.h"
 #include "AnalogSensor.h"
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "This pin map requires a classic ESP32."
@@ -19,22 +18,20 @@ QueueHandle_t commands;
 BLECharacteristic *statusChar,*infoChar;
 std::atomic<bool> connected{false},restartAdvertising{false},serialStop{false},endContinuous{false};
 std::atomic<uint32_t> session{0};
-portMUX_TYPE stateMux=portMUX_INITIALIZER_UNLOCKED, adcMux=portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE stateMux=portMUX_INITIALIZER_UNLOCKED;
 uint8_t statusBytes[20]={},detailBytes[6][20]={};
 // Stop mailbox bypasses the normal queue; only controlTask changes GPIO.
 Command stopCommand;
 bool stopPending=false;
 uint16_t lastSeq=0;
 Reply reply=Reply::None;
-uint32_t currentSession=0,lastSample=0,lastAttempt=0;
-int32_t raw=0;
-bool haveSample=false,frameError=false;
-AnalogSensor analogSensor; // Owned only by loop(); never blocks the GPIO task.
+uint32_t currentSession=0;
+AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=SENSOR_CHANNEL;b[3]=3;
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=4; // No HX710 sensor.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
- put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=31;b[19]=ANALOG_CHANNEL;
+ put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=31;b[19]=ANALOG_MASK;
 }
 class InfoCallbacks:public BLECharacteristicCallbacks{
  void onRead(BLECharacteristic*c) override {uint8_t b[20];fillInfo(b);c->setValue(b,20);}
@@ -61,17 +58,6 @@ void applyOutputs(){
  for(uint8_t ch=0;ch<6;++ch)if(ENABLED_MASK&(1<<ch))gpio_set_level((gpio_num_t)VALVE_PINS[ch],controller.valve(ch));
  for(uint8_t ch=0;ch<6;++ch)if((ENABLED_MASK&(1<<ch))&&controller.pump(ch))gpio_set_level((gpio_num_t)PUMP_PINS[ch],1);
 }
-struct AdcIO{
- bool dataHigh(){return gpio_get_level((gpio_num_t)DATA_PIN)!=0;}
- uint32_t pulse(){gpio_set_level((gpio_num_t)CLOCK_PIN,1);delayMicroseconds(2);uint32_t b=dataHigh();gpio_set_level((gpio_num_t)CLOCK_PIN,0);delayMicroseconds(2);return b;}
-}adc;
-void sampleSensor(uint32_t now){
- if(adc.dataHigh() || now-lastAttempt<20)return;
- lastAttempt=now;int32_t value=0;
- portENTER_CRITICAL(&adcMux);delayMicroseconds(2);HxFrameResult result=hxReadFrame(adc,value);portEXIT_CRITICAL(&adcMux);
- if(result==HxFrameResult::Sample){raw=value;lastSample=millis();haveSample=true;frameError=false;}
- else if(result==HxFrameResult::DataStuckLow)frameError=true;
-}
 void process(Command c,uint32_t now){
  reply=applyCommand(controller,c,session.load(),currentSession,lastSeq,reply,now);
 }
@@ -87,12 +73,10 @@ void controlTask(void*){
    portENTER_CRITICAL(&stateMux);haveStop=stopPending;c=stopCommand;stopPending=false;portEXIT_CRITICAL(&stateMux);
    if(haveStop)process(c,now);
    for(unsigned n=0;n<4 && xQueueReceive(commands,&c,0)==pdTRUE;++n)process(c,now);
-   applyOutputs();sampleSensor(now);controller.update(millis());applyOutputs();
+   applyOutputs();
    const uint32_t sampledAt=millis();
-   uint32_t age=haveSample?sampledAt-lastSample:65535;
-   const uint8_t flags=(haveSample?1:0)|(haveSample&&!frameError&&age<500?2:0)|(frameError?4:0)|((haveSample&&(raw==8388607 || raw==-8388608))?8:0);
    uint8_t b[20],details[6][20];
-   encodeSummary(b,controller,currentSession,lastSeq,reply,flags,raw,age>65535?65535:age);
+   encodeSummary(b,controller,currentSession,lastSeq,reply,0,0,65535); // Control summary only.
    for(uint8_t ch=0;ch<6;++ch)encodeDetail(details[ch],controller,ch,currentSession,sampledAt);
    portENTER_CRITICAL(&stateMux);memcpy(statusBytes,b,20);memcpy(detailBytes,details,sizeof(details));portEXIT_CRITICAL(&stateMux);
    vTaskDelay(pdMS_TO_TICKS(1));
@@ -103,9 +87,12 @@ void setup(){
    gpio_set_level((gpio_num_t)PUMP_PINS[ch],0);gpio_set_level((gpio_num_t)VALVE_PINS[ch],0);
    pinMode(PUMP_PINS[ch],OUTPUT);pinMode(VALVE_PINS[ch],OUTPUT);
  }
- gpio_set_level((gpio_num_t)CLOCK_PIN,0);pinMode(CLOCK_PIN,OUTPUT);pinMode(DATA_PIN,INPUT_PULLUP);
- pinMode(ANALOG_PIN,INPUT);analogReadResolution(12);analogSetPinAttenuation(ANALOG_PIN,ADC_11db);
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v3: CH1 pump=D22 valve=D23 analog=D34; CH2 pump=D25 valve=D26; OUT=D32 SCK=D33. x stops.");
+ pinMode(UNUSED_CLOCK_PIN,INPUT); // Do not drive the former clock wire.
+ analogReadResolution(12);
+ for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
+   pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
+ }
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v4: CH1 pump=D22 valve=D23 analog=D34; CH2 pump=D25 valve=D26 analog=D32; D33 unused. x stops.");
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}
@@ -126,9 +113,11 @@ void loop(){
  if(millis()-lastAnalogAttempt>=20){
    lastAnalogAttempt=millis();
    // Arduino's raw and calibrated-millivolt APIs perform separate conversions.
-   const uint16_t adcValue=analogRead(ANALOG_PIN);
-   const uint32_t mv=analogReadMilliVolts(ANALOG_PIN);
-   analogSensor.add(adcValue,mv>65535?65535:uint16_t(mv),millis());
+   for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
+     const uint16_t adcValue=analogRead(ANALOG_PINS[ch]);
+     const uint32_t mv=analogReadMilliVolts(ANALOG_PINS[ch]);
+     analogSensors[ch].add(adcValue,mv>65535?65535:uint16_t(mv),millis());
+   }
  }
  static uint32_t lastNotify=0;
  if(statusChar && millis()-lastNotify>=100){
@@ -136,9 +125,10 @@ void loop(){
    portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));portEXIT_CRITICAL(&stateMux);
    statusChar->setValue(b,20);if(connected.load())statusChar->notify();
    for(uint8_t ch=0;ch<6 && connected.load();++ch)if(ENABLED_MASK&(1<<ch)){statusChar->setValue(details[ch],20);statusChar->notify();}
-   if(connected.load()){
+   for(uint8_t ch=0;ch<6 && connected.load();++ch)if(ANALOG_MASK&(1<<ch)){
      uint8_t analogBytes[20];const uint32_t now=millis();
-     encodeAnalog(analogBytes,ANALOG_CHANNEL,session.load(),analogSensor.flags(now),analogSensor.raw,analogSensor.millivolts,analogSensor.age(now));
+     const auto &sensor=analogSensors[ch];
+     encodeAnalog(analogBytes,ch,session.load(),sensor.flags(now),sensor.raw,sensor.millivolts,sensor.age(now));
      statusChar->setValue(analogBytes,20);statusChar->notify();
    }
    statusChar->setValue(b,20); // Reads return the summary, never an arbitrary channel detail.

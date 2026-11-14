@@ -2,20 +2,22 @@ export const UUID = Object.freeze({service:'8d5a0001-4c7b-4f45-9d68-8e0c2c970001
 export const PHASES=['Ready','Selecting valve','Pumping','Holding','Released'];
 export const REPLIES=['','Started','A selected channel is already running','','Invalid timing or channel','Channel is not wired','Release requested','Command expired; nothing started'];
 const view=v=>v instanceof DataView?v:new DataView(v.buffer??v,v.byteOffset??0,v.byteLength);
-function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v3 MeditationVest firmware from Connection & setup, then reconnect.');return v;}
+function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v4 MeditationVest firmware from Connection & setup, then reconnect.');return v;}
 export function decodeInfo(input){
  const v=frame(input,20), info={mask:v.getUint8(1),sensorChannel:v.getUint8(2),firmware:v.getUint8(3),minPump:v.getUint16(4,true),maxPump:v.getUint16(6,true),maxHold:v.getUint16(8,true),lead:v.getUint16(10,true),maxRelease:v.getUint16(12,true),session:v.getUint32(14,true),flags:v.getUint8(18)};
- const legacy=info.firmware===2&&info.flags===15&&v.getUint8(19)===0;
- const analog=info.firmware===3&&info.flags===31&&v.getUint8(19)===1;
- if(!info.session||!info.mask||info.mask>63||info.sensorChannel!==2||(!legacy&&!analog)||info.minPump<1||info.minPump>info.maxPump||info.maxPump>2000||info.maxHold>10000||info.lead!==100||info.maxRelease>10000)throw Error('Firmware settings do not match this control page.');
- info.analogChannel=analog?1:null;
+ const legacy=info.firmware===2&&info.flags===15&&info.sensorChannel===2&&v.getUint8(19)===0;
+ const mixed=info.firmware===3&&info.flags===31&&info.sensorChannel===2&&v.getUint8(19)===1;
+ const dual=info.firmware===4&&info.flags===31&&info.sensorChannel===255&&v.getUint8(19)===6;
+ if(!info.session||!info.mask||info.mask>63||(!legacy&&!mixed&&!dual)||info.minPump<1||info.minPump>info.maxPump||info.maxPump>2000||info.maxHold>10000||info.lead!==100||info.maxRelease>10000)throw Error('Firmware settings do not match this control page.');
+ info.analogChannels=dual?[1,2]:mixed?[1]:[];
+ info.hxChannel=dual?null:2;
  return info;
 }
 export function decodeStatus(input){
  const v=frame(input,20),kind=v.getUint8(1),session=v.getUint32(6,true);
  if(kind===0x20){
   const s={kind:'analog',session,channel:v.getUint8(2),flags:v.getUint8(3),raw:v.getUint16(4,true),millivolts:v.getUint16(10,true),age:v.getUint16(12,true)};
-  if(s.channel!==1||s.flags>15||s.raw>4095||s.millivolts>5000||Array.from({length:6},(_,i)=>v.getUint8(14+i)).some(Boolean)||((s.flags&2)&&!(s.flags&1)))throw Error('Invalid analog sensor status received.');
+  if(![1,2].includes(s.channel)||s.flags>15||s.raw>4095||s.millivolts>5000||Array.from({length:6},(_,i)=>v.getUint8(14+i)).some(Boolean)||((s.flags&2)&&!(s.flags&1)))throw Error('Invalid analog sensor status received.');
   s.fresh=Boolean(s.flags&1)&&Boolean(s.flags&2)&&s.age<500;
   return s;
  }

@@ -7,7 +7,7 @@
 #include "../firmware/hub_ble/BleProtocol.h"
 #include "../firmware/hub_ble/AnalogSensor.h"
 int main(){
- assert(ANALOG_PIN==34&&ANALOG_CHANNEL==1);
+ assert(ANALOG_MASK==6&&ANALOG_PINS[1]==34&&ANALOG_PINS[2]==32&&UNUSED_CLOCK_PIN==33);
  AnalogSensor sensor;assert(sensor.flags(0)==0&&sensor.age(0)==65535);
  for(int i=0;i<3;++i)sensor.add(400+i,200+i,20*i);
  assert(!sensor.available);sensor.add(403,203,60);
@@ -18,9 +18,14 @@ int main(){
  for(int i=0;i<4;++i)sensor.add(0,0,UINT32_MAX-20+i);
  assert(sensor.raw==0&&sensor.flags(10)==7&&sensor.age(10)==28); // millis wrap.
  uint8_t analogBytes[20];encodeAnalog(analogBytes,1,0x12345678,3,402,202,20);
+ AnalogSensor second;for(int i=0;i<4;++i)second.add(2000,1500,1000+i);
+ assert(second.raw==2000&&second.millivolts==1500&&second.flags(1003)==3);
+ assert(sensor.raw==0&&sensor.flags(1003)==5); // CH1 stale does not affect fresh CH2.
+ uint8_t ch2Bytes[20];encodeAnalog(ch2Bytes,2,0x12345678,3,second.raw,second.millivolts,0);
+ assert(ch2Bytes[2]==2&&read16(ch2Bytes+4)==2000&&read16(ch2Bytes+10)==1500);
  const uint8_t expectedAnalog[20]={2,32,1,3,146,1,120,86,52,18,202,0,20,0,0,0,0,0,0,0};
  for(int i=0;i<20;++i)assert(analogBytes[i]==expectedAnalog[i]);
- assert(ENABLED_MASK==6&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26&&DATA_PIN==32&&CLOCK_PIN==33);
+ assert(ENABLED_MASK==6&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
  for(auto mask:{2,4,6})for(auto pump:{50,1000,2000})for(auto hold:{0,1000,10000}){
   HubController c(6);assert(c.start(mask,pump,hold,0,1,20)==Reply::Accepted);
   for(uint32_t t=20;t<=uint32_t(120+pump+hold);++t){

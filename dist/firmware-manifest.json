@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v3",
+  "firmware": "MEDITATION VEST BLE v4",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -15,9 +15,9 @@
     "CH2": {
       "pump": 25,
       "valve": 26,
-      "data": 32,
-      "clock": 33
-    }
+      "analog": 32
+    },
+    "unusedClock": 33
   },
   "cycleLimitsMs": {
     "minPump": 50,
@@ -34,9 +34,17 @@
   "v1OperationUserReported": true,
   "v2HardwareVerified": false,
   "v3HardwareVerified": false,
-  "analogSensor": {
-    "channel": 1,
-    "pin": 34,
+  "v4HardwareVerified": false,
+  "ch2ReplacementUserReported": false,
+  "analogSensors": {
+    "channels": [
+      1,
+      2
+    ],
+    "pins": [
+      34,
+      32
+    ],
     "supplyV": 3.3,
     "resolutionBits": 12,
     "attenuation": "ADC_11db",
@@ -50,8 +58,8 @@
     "BleProtocol.h": "48b30cf47e26a936fe726a9615c4f8e17491c40d1ed9dfca4f4695dbbad21deb",
     "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
-    "PinMap.h": "ec9481a9984a9c75e150d93d99f58076cf8c674cb5d51d3fa296b65e654496ac",
-    "README.md": "e211b78b7f9ce9ccc66fcaecd1344c6faddc791aeadea4fce51c163c5fa68c14",
-    "hub_ble.ino": "8ed7d9c322a6cb486c573820295e95d57597f04099d293456b6abcefe9ba7b03"
+    "PinMap.h": "c05da852b46329b6c6c445128f8e18ecf09278e933c8a711e06899620c2ed9b8",
+    "README.md": "b60476e1700867498806257169adf13638ed3420c863ceb44d10ad155f66bbe1",
+    "hub_ble.ino": "7172ddc0ab50705afab4dd599f59470eefb31155bc391c68616150a093e506ff"
   }
 }

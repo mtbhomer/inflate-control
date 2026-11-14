@@ -1,7 +1,7 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v3
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v4
 
 Mobile BLE control with linked boards and repeat patterns. Device name:
-**MeditationVest**. Upload this v3 sketch to add CH1 voltage readings. The updated page also supports v2 for controls and CH2, and shows a CH1 upgrade prompt.
+**MeditationVest**. Use this v4 sketch after replacing CH2’s HX710 with the new analog sensor. Both channels then show voltage. Keep v3 until that replacement: the updated page supports v2/v3 and retains their CH2 HX710 display.
 The service UUID is unchanged; old v1 firmware receives an upgrade message.
 
 ## Existing wiring
@@ -9,9 +9,9 @@ The service UUID is unchanged; old v1 firmware receives an upgrade message.
 | Channel | Pump | Valve | Sensor |
 |---|---|---|---|
 | CH1, lower left | D22 | D23 | Analog OUT D34 / ADC1_CH6 |
-| CH2, bottom left | D25 | D26 | HX710 OUT D32, SCK D33 |
+| CH2, bottom left | D25 | D26 | Replacement analog OUT D32 / ADC1_CH4 |
 
-CH1 retains its working software exchange. Actuator wiring is unchanged. The user reports adding the new CH1 sensor to D34; its output voltage and exact variant have not been measured here.
+CH1 retains its working software exchange. Actuator wiring is unchanged. The user reports better range on CH1, and confirms its cycle works with the physical sockets opposite the original guide: pump uses V1, valve uses P1. Keep D22/D23 unchanged. CH2 replacement is planned, not reported completed. Exact sensor variant and calibrated pressure range remain unconfirmed.
 CH0/CH3/CH4/CH5 stay disabled and unplugged; earlier CH3 leads can share CH2
 GPIOs. Six software slots exist, but independent GPIO wiring is required
 before enabling more. `PinMap.h` validates unique assigned GPIOs.
@@ -22,7 +22,7 @@ before enabling more. `PinMap.h` validates unique assigned GPIOs.
 2. Open `hub_ble.ino` with all its `.h` files in the same folder. Select
    classic **ESP32 Dev Module**, the existing serial port and 115200 upload
    speed. Built with Arduino ESP32 **3.2.1**, bundled BLE and default partition.
-3. Serial Monitor at 115200 shows **MEDITATION VEST BLE v3** and advertising
+3. Serial Monitor at 115200 shows **MEDITATION VEST BLE v4** and advertising
    **MeditationVest**. Serial `x` stops all outputs. Old serial `1`/`2`
    commands do not start this sketch.
 4. Open the HTTPS control page in **Bluefy**, refresh it, tap **Connect hub**,
@@ -34,7 +34,7 @@ before enabling more. `PinMap.h` validates unique assigned GPIOs.
 6. Choose two channels and tap **Link boards**. Shared settings control both
    boards. One command starts both on the same firmware tick; all phases
    and repeats match. Unlink while idle to restore individual settings.
-7. CH1 voltage appears directly, without a display zero. Fully vent the CH2 bag, then tap **Set vented zero** for its separate percentage chart.
+7. Both CH1 and CH2 voltages appear directly, without display zero. Compare each with a meter while actuator power remains disconnected.
 
 The user reported that the previous v1 functions work. The new simultaneous
 mode has not been physically tested. Battery output current and shared wire
@@ -82,11 +82,15 @@ Session nonces, sequence ordering and a 250 ms queue expiry prevent stale
 starts. Uncertain writes are never retried automatically. New starts are
 unavailable when status is stale, but the Stop button remains available.
 
-## CH1 analog voltage display
+## CH1 and CH2 analog voltage display
 
-D34 reads the new CH1 sensor through hub A12 / module J3. Supply the sensor
-from 3.3 V (hub A11 / module I3) with control ground (A16 / N3). Do not use
-5 V on this direct ESP32 input. The received sensor&#x27;s exact factory variant,
+D34 reads CH1 through hub A12 / module J3; D32 reads CH2 through its existing
+hub E18 / module J3 wire. CH1 supply is A11 → I3 and ground A16 → N3; CH2
+supply is D18 → I3 and ground I18 → N3. Use 3.3 V, not 5 V, on both sensors.
+Remove the old CH2 HX710, and disconnect its SCK lead from module K3. D33
+is now INPUT without pull resistors or clock pulses. Its hub wire may stay
+in place, with the module’s clock contact unused. Never join two sensor
+outputs to the same OUT conductor. The received sensor&#x27;s exact factory variant,
 pressure range and transfer calibration are not confirmed.
 
 The sketch uses 12-bit `analogRead` and `analogReadMilliVolts` with per-pin
@@ -111,7 +115,10 @@ removed and JP5 open. The assistant did not perform a live measurement.
 
 Reference: https://docs.espressif.com/projects/arduino-esp32/en/latest/api/adc.html
 
-## CH2 sensor range display
+## Legacy CH2 display with firmware v2/v3
+
+V4 has no HX710 acquisition. The new UI preserves this display only when
+connected to v2/v3 and the old CH2 sensor is still fitted.
 
 CH2 HX710 counts are signed 24-bit ADC readings, not pressure units. With
 vented zero B, the displayed percentage is:
@@ -162,24 +169,27 @@ remaining ms u16 at 18. Detail packets cannot acknowledge commands. Continuous
 cycle display saturates at 65535; disconnect converts its target to the
 current cycle. Retained OFF details describe the last run, not a new one.
 
-The hub emits a summary, one detail per enabled channel, and one CH1 analog packet about every
+The hub emits a summary, one detail per enabled channel, and one analog packet per sensor about every
 100 ms. Reads return a summary (an overlapping notification can yield a
 detail or analog packet, which the client handles). Detail and summary observations are
 approximate UI progress, not atomic measurements of physical outputs.
 
-Info (20): version at 0; enabled mask at 1; sensor channel at 2; firmware
-revision 3 at 3; u16 min pump/max pump/max hold/valve lead/max release at
-4/6/8/10/12; session u32 at 14; feature flags 31 at 18 (previous 15 plus
-bit 16 = analog telemetry); analog channel 1 at 19. Firmware v2 remains flags
-15 / byte 19 zero, and the new UI accepts it without showing a false CH1 value.
+Info (20): version at 0; enabled mask at 1; HX710 sensor channel at 2
+(255 = none in v4); firmware revision 4 at 3; u16 min pump/max pump/max hold/
+valve lead/max release at 4/6/8/10/12; session u32 at 14; feature flags 31
+at 18; analog channel bitmask 6 at 19 (CH1 and CH2). In v3, byte2=2, byte3=3,
+flags=31, byte19=1 means a single analog channel ID (CH1). V2 is byte2=2,
+byte3=2, flags15, byte19=0. The new UI distinguishes all three combinations.
+Old v3 pages reject revision4 at handshake; refresh the page after upload.
 
-Analog notification (20): protocol version 2 at 0; type 0x20 at 1; channel 1
-at 2; flags at 3 (1=has sample, 2=fresh, 4=raw floor observed, 8=raw ceiling
-observed); raw average u16 at 4; session u32 at 6; millivolts u16 at 10; age
-ms u16 at 12, saturated at 65535; reserved zero at 14–19. This packet cannot
-acknowledge a command or refresh the controls’ summary timestamp. CH2 summary
-and all command/detail layouts are unchanged. Old v2 pages reject firmware
-revision 3 at handshake; refresh the page to v3.
+Analog notification (20): protocol version 2 at 0; type 0x20 at 1; channel
+1 or 2 at 2; flags at 3 (1=has sample, 2=fresh, 4=raw floor observed, 8=raw
+ceiling observed); raw average u16 at 4; session u32 at 6; millivolts u16
+at 10; age ms u16 at 12, saturated at 65535; reserved zero at 14–19. Each
+sensor has its own sample window, age and chart. Sensor data cannot acknowledge
+a command or refresh the controls’ summary timestamp. V4 control summaries
+carry zero sensor flags/raw and age65535; the UI uses the analog packets.
+All command/detail layouts remain unchanged.
 
 BLE has no application pairing secret; HTTPS serves the page but does not
 authenticate the nearby device. Timing preferences stay in localStorage;
@@ -194,9 +204,9 @@ telemetry. JS tests cover matching packets, transport ordering/timeouts,
 version compatibility, separate sensor identities, percentage/clipping arithmetic, analog averaging, saturation flags, stale data and packet validation. The phone-width
 Safari preview uses simulated data and sends no Bluetooth commands.
 
-The compiled v3 sketch and preview are software checks. Physical linked
+The compiled v4 sketch and preview are software checks. Physical linked
 current, radio behavior, phone backgrounding and actual pump/valve timing
 still need verification. The assistant did not upload or actuate hardware.
-Previous BLE firmware is archived as `hub_ble-v2.zip` and `hub_ble-v1.zip`; the separate serial
+Previous BLE firmware is archived as `hub_ble-v3.zip`, `hub_ble-v2.zip` and `hub_ble-v1.zip`; the separate serial
 v4 program remains unchanged in the research workspace.
 </pre></html>
