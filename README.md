@@ -1,4 +1,4 @@
-# MeditationVest control · v5
+# MeditationVest control · v6
 
 Mobile Web Bluetooth UI for six independent pump/valve channels and six analog
 sensors. Open the HTTPS GitHub Pages site in Bluefy and upload the matching
@@ -10,7 +10,7 @@ until Stop. No fixed cooldown follows the last release. Sensor data is display
 only. Firmware capability flags still determine which controls are enabled.
 The page has a clearly marked preview that sends no Bluetooth commands.
 
-The hardware plan preserves working CH1/CH2 GPIOs, uses six distinct ADC1 pins,
+The hardware plan uses CH1 D23 pump / D22 valve and preserves CH2 GPIOs, uses six distinct ADC1 pins,
 and requires USB-only verification of the D16/D17 headers before actuator power.
 Six-pump current capacity, pressure calibration and physical six-channel timing
 remain unverified. No assistant upload or hardware actuation is performed.

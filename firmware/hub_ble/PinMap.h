@@ -1,8 +1,8 @@
 #pragma once
 #include <stdint.h>
-// Six-channel hub plan, 14 November 2026. Confirm D16/D17 in USB-only checks.
-constexpr int8_t PUMP_PINS[6] = {4, 22, 25, 19, 16, 13};
-constexpr int8_t VALVE_PINS[6] = {17, 23, 26, 18, 27, 14};
+// Six-channel hub plan, 16 November 2026 · CH1 aligned GPIOs. Confirm D16/D17 in USB-only checks.
+constexpr int8_t PUMP_PINS[6] = {4, 23, 25, 19, 16, 13};
+constexpr int8_t VALVE_PINS[6] = {17, 22, 26, 18, 27, 14};
 constexpr int8_t ANALOG_PINS[6] = {35, 34, 32, 36, 39, 33};
 constexpr uint8_t ENABLED_MASK = 63;
 constexpr uint8_t ANALOG_MASK = 63;

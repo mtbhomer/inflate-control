@@ -2,13 +2,13 @@ export const UUID = Object.freeze({service:'8d5a0001-4c7b-4f45-9d68-8e0c2c970001
 export const PHASES=['Ready','Selecting valve','Pumping','Holding','Released'];
 export const REPLIES=['','Started','A selected channel is already running','','Invalid timing or channel','Channel is not wired','Release requested','Command expired; nothing started'];
 const view=v=>v instanceof DataView?v:new DataView(v.buffer??v,v.byteOffset??0,v.byteLength);
-function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v5 MeditationVest firmware from Connection & setup, then reconnect.');return v;}
+function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v6 MeditationVest firmware from Connection & setup, then reconnect.');return v;}
 export function decodeInfo(input){
  const v=frame(input,20), info={mask:v.getUint8(1),sensorChannel:v.getUint8(2),firmware:v.getUint8(3),minPump:v.getUint16(4,true),maxPump:v.getUint16(6,true),maxHold:v.getUint16(8,true),lead:v.getUint16(10,true),maxRelease:v.getUint16(12,true),session:v.getUint32(14,true),flags:v.getUint8(18)};
  const legacy=info.firmware===2&&info.flags===15&&info.sensorChannel===2&&v.getUint8(19)===0;
  const mixed=info.firmware===3&&info.flags===31&&info.sensorChannel===2&&v.getUint8(19)===1;
  const dual=info.firmware===4&&info.flags===31&&info.sensorChannel===255&&v.getUint8(19)===6;
- const six=info.firmware===5&&info.flags===31&&info.sensorChannel===255&&v.getUint8(19)===63&&info.mask===63;
+ const six=[5,6].includes(info.firmware)&&info.flags===31&&info.sensorChannel===255&&v.getUint8(19)===63&&info.mask===63;
  if(!info.session||!info.mask||info.mask>63||(!legacy&&!mixed&&!dual&&!six)||info.minPump<1||info.minPump>info.maxPump||info.maxPump>2000||info.maxHold>10000||info.lead!==100||info.maxRelease>10000)throw Error('Firmware settings do not match this control page.');
  info.analogChannels=six?[0,1,2,3,4,5]:dual?[1,2]:mixed?[1]:[];
  info.hxChannel=dual||six?null:2;

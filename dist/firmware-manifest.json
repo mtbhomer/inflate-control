@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v5",
+  "firmware": "MEDITATION VEST BLE v6",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -17,8 +17,8 @@
       "analog": 35
     },
     "CH1": {
-      "pump": 22,
-      "valve": 23,
+      "pump": 23,
+      "valve": 22,
       "analog": 34
     },
     "CH2": {
@@ -42,7 +42,8 @@
       "analog": 33
     }
   },
-  "hubConnectorRevision": "2026-11-16-uniform",
+  "hubConnectorRevision": "2026-11-16-ch1-aligned",
+  "firmwareRevision": 6,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -56,15 +57,18 @@
   "ch1PairedCorrection": {
     "hub": {
       "pump": {
-        "gpio": 22,
-        "from": "A14",
-        "to": "A15"
+        "gpio": 23,
+        "portPin": 4,
+        "espHole": "C16",
+        "hubHole": "A15"
       },
       "valve": {
-        "gpio": 23,
-        "from": "A15",
-        "to": "A14"
-      }
+        "gpio": 22,
+        "portPin": 5,
+        "espHole": "C15",
+        "hubHole": "A14"
+      },
+      "instruction": "Keep the original hub leads; if the preceding hub-swap proposal was applied, restore these endpoints."
     },
     "module": {
       "pump": {
@@ -82,6 +86,7 @@
         "socket": "P1"
       }
     },
+    "firmwareRequired": 6,
     "completed": false
   },
   "conditionalBoardPins": [
@@ -133,8 +138,8 @@
     "BleProtocol.h": "48b30cf47e26a936fe726a9615c4f8e17491c40d1ed9dfca4f4695dbbad21deb",
     "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
-    "PinMap.h": "cc637fb6ad6f3578e7a90b7cba024c7db86ca1fcdf4ba79872e8f8ae5239dce3",
-    "README.md": "4ca5f5ce17be50f4253004bdde34bff2ff2f24a9bb541965d9ab32b962968edd",
-    "hub_ble.ino": "cacfd13496f498918788556f9cc72611a640517a16105b8758d70a7a9663b853"
+    "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
+    "README.md": "3624e2d8ff0dd88b0ef24c9f9aebec842c18cc1d5277d4b322d08c1760a47bed",
+    "hub_ble.ino": "a6c50415fa9afefeab841023fde06861fee5b519b2dc5d1c8ba4d8c1623a1a8c"
   }
 }

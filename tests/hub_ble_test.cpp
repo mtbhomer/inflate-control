@@ -25,7 +25,15 @@ int main(){
  assert(ch2Bytes[2]==2&&read16(ch2Bytes+4)==2000&&read16(ch2Bytes+10)==1500);
  const uint8_t expectedAnalog[20]={2,32,1,3,146,1,120,86,52,18,202,0,20,0,0,0,0,0,0,0};
  for(int i=0;i<20;++i)assert(analogBytes[i]==expectedAnalog[i]);
- assert(ENABLED_MASK==63&&PUMP_PINS[1]==22&&VALVE_PINS[1]==23&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
+ assert(ENABLED_MASK==63&&PUMP_PINS[1]==23&&VALVE_PINS[1]==22&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
+ // CH1's pump and valve use the aligned GPIOs throughout the cycle.
+ {HubController ch1(63);assert(ch1.start(2,1000,1000,0,1,0)==Reply::Accepted);
+  for(const auto now:{0u,100u,1099u,1100u,2099u,2100u}){
+   ch1.update(now);bool gpio[40]={};for(unsigned ch=0;ch<6;++ch){gpio[PUMP_PINS[ch]]=ch1.pump(ch);gpio[VALVE_PINS[ch]]=ch1.valve(ch);}
+   assert(gpio[23]==(now>=100&&now<1100));assert(gpio[22]==(now<2100));
+   assert(!gpio[25]&&!gpio[26]);
+  }
+ }
  for(auto mask:{2,4,6})for(auto pump:{50,1000,2000})for(auto hold:{0,1000,10000}){
   HubController c(6);assert(c.start(mask,pump,hold,0,1,20)==Reply::Accepted);
   for(uint32_t t=20;t<=uint32_t(120+pump+hold);++t){

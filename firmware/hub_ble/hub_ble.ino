@@ -29,7 +29,7 @@ uint32_t currentSession=0;
 AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=5; // Six independent analog sensors.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=6; // Six independent analog sensors.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
  put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=31;b[19]=ANALOG_MASK;
 }
@@ -91,7 +91,7 @@ void setup(){
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v5: six analog channels; verify D16/D17 with actuator battery disconnected. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v6: CH1 pump D23, valve D22; six analog channels; verify D16/D17 with actuator battery disconnected. x stops.");
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}

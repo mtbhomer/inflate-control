@@ -1,34 +1,37 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v5 · six analog channels
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v6 · six analog channels
 
 Use this package with the six-channel hub pin table. BLE device: **MeditationVest**.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
 | CH0 | D4 | D17 | D35 |
-| CH1 | D22 | D23 | D34 |
+| CH1 | D23 | D22 | D34 |
 | CH2 | D25 | D26 | D32 |
 | CH3 | D19 | D18 | VP / GPIO36 |
 | CH4 | D16 | D27 | VN / GPIO39 |
 | CH5 | D13 | D14 | D33 |
 
-All sensors use 3.3 V and a separate ADC1 input. The uniform hub manual dated
-16 November uses **P4 pump / P5 valve on every channel**; P6 is unused.
-This is a connector-wiring revision; all firmware GPIO assignments above are unchanged.
+All sensors use 3.3 V and a separate ADC1 input. Every hub connector uses
+**P4 pump / P5 valve**, with P6 unused. Firmware v6 changes only CH1&#x27;s actuator
+GPIO assignment from v5: **pump D23, valve D22**. Other channel pins are unchanged.
 
-For the previously working CH1 exception, complete both corrections with battery
-and USB disconnected before using the uniform pinout:
+## CH1 wiring and firmware must agree
 
-- Hub: D22 / C15 → P4 / A15 (pump); D23 / C16 → P5 / A14 (valve).
-  Exchange the old A14/A15 wire ends if installed.
-- CH1 module: exchange only the command-wire ends at M3 / J1 P4 and L3 / J1 P5.
-  The actual pump-driver lead must end at L3, the valve-driver lead at M3.
-  Keep driver ends, power wires and the working pump at V1 / valve at P1 unchanged.
-- Confirm end to end: D22 → hub P4 → module P5 → pump driver;
-  D23 → hub P5 → module P4 → valve driver. Do not swap a board already matching
-  those paths. Changing only one side reverses actuator commands.
+- Keep the original hub conductors: **D23 / C16 → P4 / A15 pump** and
+  **D22 / C15 → P5 / A14 valve**. If you applied the preceding hub-swap proposal,
+  restore these endpoints with all power disconnected.
+- On the previously working CH1 module, check **L3 / J1 P5 → actual pump-driver
+  input**, **M3 / J1 P4 → actual valve-driver input**. If opposite, exchange only
+  the M3/L3 command-wire ends; if already correct, do not swap again.
+- Keep driver ends, power wiring and the working pump in V1 / valve in P1.
+  Standard modules already use J1 P5 for pump and P4 for valve.
+- Upload **v6** yourself with battery physically disconnected and JP5 open.
+  v5 assigns CH1 D22/D23 oppositely. Verify the complete signal paths and v6
+  output timing with actuator power disconnected before a powered test.
 
-Standard modules already use J1 P5 for pump and P4 for valve. No new upload is
-needed if v5 is already installed. Physical CH1 rework is not recorded as completed.
+This update changes no sensor pin, cycle timing, repeat/link behavior or BLE name.
+Module correction and hardware verification are not recorded as completed.
+
 Module printed coordinates are A–X on the solder side; hub coordinates remain
 A–X on the component side, USB up.
 
