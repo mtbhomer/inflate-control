@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v6",
+  "firmware": "MEDITATION VEST BLE v7",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -43,7 +43,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 6,
+  "firmwareRevision": 7,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -104,7 +104,14 @@
     "maxRepeatCount": 999
   },
   "sensorDisplayOnly": true,
-  "disconnectBehavior": "finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
+  "channelTest": {
+    "oneChannelAtATime": true,
+    "manualPumpMaxMs": 2000,
+    "manualValveMaxMs": 10000,
+    "otherSwitchDoesNotExtendTimer": true,
+    "statesAreCommandedNotMeasured": true
+  },
+  "disconnectBehavior": "test outputs turn off; finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
   "analogSensors": {
@@ -135,11 +142,11 @@
   },
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
-    "BleProtocol.h": "48b30cf47e26a936fe726a9615c4f8e17491c40d1ed9dfca4f4695dbbad21deb",
-    "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
+    "BleProtocol.h": "357babcd4426aa949f70b5d175d35c137cfe4aea691ad9b952190eacc372e692",
+    "HubController.h": "ddeaa807112c1220af682b12994b4fd8a7f9a1d5223ed4b3b0aa997d9d29c4c4",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
-    "README.md": "3624e2d8ff0dd88b0ef24c9f9aebec842c18cc1d5277d4b322d08c1760a47bed",
-    "hub_ble.ino": "a6c50415fa9afefeab841023fde06861fee5b519b2dc5d1c8ba4d8c1623a1a8c"
+    "README.md": "4b8c57b5267432e98ff447b55742d5f242f49436dd553b3c49eabd66d61d0da9",
+    "hub_ble.ino": "e49cf02c339d694253ead0eca295e72041e25c189def6009dcc079f00a193996"
   }
 }

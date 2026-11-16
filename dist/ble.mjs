@@ -1,6 +1,6 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=6';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=7';
 export class HubBLE extends EventTarget{
- constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Fixed-count patterns finish on the hub. Until Stop ends after the current cycle.');}
+ constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Channel tests switch off. Fixed-count patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
  async connect(){
   if(!globalThis.isSecureContext)throw Error('Open the hosted HTTPS link in Bluefy.');
@@ -30,7 +30,10 @@ export class HubBLE extends EventTarget{
  status(value){try{
   const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
   if(s.kind==='analog'){if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
-  if(s.kind==='detail'){if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
+  if(s.kind==='detail'){if(s.phase===5&&!this.info.testControls)throw Error('Unexpected test status; reconnect.');if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
+  if(this.info.testControls&&(s.flags!==0||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
+  if(this.info.testControls&&s.phases.some((phase,ch)=>{const bits=(s.raw>>(2*ch))&3;return phase===5?bits===0:bits!==([0,2,3,2,0][phase]);}))throw Error('Output states disagree with channel phases; reconnect.');
+  if(!this.info.testControls&&s.phases.includes(5))throw Error('Unexpected manual test status; reconnect.');
   if(s.active&~this.info.mask)throw Error('Channel configuration changed; reconnect.');
   this.emit('status',s);
   const waiter=this.waiters.get(s.seq);if(waiter){clearTimeout(waiter.timer);this.waiters.delete(s.seq);waiter.resolve(s);}
@@ -45,11 +48,11 @@ export class HubBLE extends EventTarget{
   let resolve,reject,timer,expired=false;
   const outcome=new Promise((a,b)=>{resolve=a;reject=b;});
   outcome.catch(()=>{}); // It may reject while a slow GATT write is still settling.
-  timer=setTimeout(()=>{expired=true;this.waiters.delete(seq);reject(Error(op===2?'Stop not confirmed. Use the battery switch if needed.':'No confirmation. Check the hub; the pattern may have started.'));},2500);
+  timer=setTimeout(()=>{expired=true;this.waiters.delete(seq);reject(Error(op===2?'Stop not confirmed. Use the battery switch if needed.':'No confirmation. Check the hub; the command may have taken effect.'));},2500);
   const write=this.writeTail.catch(()=>{}).then(async()=>{
    if(expired)throw Error('Command expired before it could be sent.');
    if(generation!==this.generation||!this.device?.gatt.connected)throw Error('Connection ended; command was not sent.');
-   if(op===1&&seq<(this.cancelStartsThrough||0))throw Error('Start cancelled by Stop.');
+   if(op!==2&&seq<(this.cancelStartsThrough||0))throw Error('Start cancelled by Stop.');
    this.waiters.set(seq,{resolve,reject,timer});
    const c=this.commandChar;
    if(c.writeValueWithResponse)await c.writeValueWithResponse(bytes);else await c.writeValue(bytes);
@@ -66,5 +69,5 @@ export class HubBLE extends EventTarget{
   for(const w of this.waiters.values()){clearTimeout(w.timer);w.reject(Error('Bluetooth disconnected; command outcome is unknown.'));}
   this.waiters.clear();this.commandChar=null;this.statusChar=null;this.info=null;this.seq=0;this.cancelStartsThrough=0;this.writeTail=Promise.resolve();this.emit('disconnected',message);
  }
- disconnect(){const device=this.device;this.clear('Disconnected. Fixed-count patterns finish on the hub. Until Stop ends after the current cycle.');if(device?.gatt.connected)device.gatt.disconnect();this.device=null;}
+ disconnect(){const device=this.device;this.clear('Disconnected. Channel tests switch off. Fixed-count patterns finish; Until Stop ends after the current cycle.');if(device?.gatt.connected)device.gatt.disconnect();this.device=null;}
 }

@@ -26,6 +26,29 @@ int main(){
  const uint8_t expectedAnalog[20]={2,32,1,3,146,1,120,86,52,18,202,0,20,0,0,0,0,0,0,0};
  for(int i=0;i<20;++i)assert(analogBytes[i]==expectedAnalog[i]);
  assert(ENABLED_MASK==63&&PUMP_PINS[1]==23&&VALVE_PINS[1]==22&&PUMP_PINS[2]==25&&VALVE_PINS[2]==26);
+ // Exclusive test mode and independent bounded output switches.
+ for(uint8_t ch=0;ch<6;++ch){HubController bench(63);const uint8_t mask=1<<ch,other=1<<((ch+1)%6);
+  assert(bench.manual(mask,1,0,100)==Reply::Accepted);assert(bench.pump(ch)&&!bench.valve(ch));
+  assert(bench.start(other,100,100,0,1,100)==Reply::Busy);assert(bench.manual(other,1,0,100)==Reply::Busy);
+  assert(bench.manual(mask,2,1,1900)==Reply::Accepted); // Valve ON does not extend pump.
+  bench.update(2100);assert(!bench.pump(ch)&&bench.valve(ch));
+  assert(bench.manual(mask,2,0,2101)==Reply::Accepted);assert(!bench.activeMask()); // Expired pump is not restarted.
+  assert(bench.manual(mask,0,1,3000)==Reply::Accepted);bench.update(12999);assert(bench.valve(ch));bench.update(13000);assert(!bench.valve(ch));
+  assert(bench.testCycle(mask,100,200,14000)==Reply::Accepted);assert(bench.manual(mask,1,0,14010)==Reply::Busy);assert(bench.testCycle(other,100,0,14010)==Reply::Busy);
+  bench.update(14100);assert(bench.pump(ch)&&bench.valve(ch));bench.update(14200);assert(!bench.pump(ch)&&bench.valve(ch));bench.update(14400);assert(!bench.activeMask());
+  assert(bench.start(other,100,100,0,1,14400)==Reply::Accepted);assert(bench.manual(mask,1,1,14401)==Reply::Busy);bench.stop();
+  assert(bench.manual(mask,1,1,15000)==Reply::Accepted);uint8_t b[20];encodeControlSummary(b,bench,1,3,Reply::Accepted);assert(read32(b+10)==uint32_t(3)<<(2*ch));assert(b[3]==mask);
+  bench.endContinuous();assert(!bench.activeMask()&&!bench.pump(ch)&&!bench.valve(ch));
+  bench.testCycle(mask,100,100,16000);bench.endContinuous();assert(!bench.activeMask());
+  bench.manual(mask,1,1,UINT32_MAX-499);bench.update(1500);assert(!bench.pump(ch)&&bench.valve(ch));bench.stop();assert(!bench.valve(ch));
+ }
+ {HubController bench(6);assert(bench.manual(3,1,1,0)==Reply::Invalid);assert(bench.manual(1,1,1,0)==Reply::Disabled);assert(bench.manual(2,3,0,0)==Reply::Invalid);
+  uint8_t raw[18]={2,3,2,0,1,0,1,0,2,0,42,0,0,0,0,0,0,0};Command cmd;assert(decodeCommand(raw,18,cmd));uint16_t seq=0;
+  assert(applyCommand(bench,cmd,42,42,seq,Reply::None,251)==Reply::Expired);assert(!bench.activeMask());
+  cmd.seq=2;cmd.receivedAt=300;assert(applyCommand(bench,cmd,42,42,seq,Reply::None,300)==Reply::Accepted);assert(bench.pump(1));
+  bench.update(2300);assert(!bench.activeMask());assert(applyCommand(bench,cmd,42,42,seq,Reply::Accepted,2300)==Reply::Accepted);assert(!bench.activeMask());
+  raw[1]=4;raw[6]=100;raw[8]=100;raw[16]=1;assert(decodeCommand(raw,18,cmd));raw[2]=6;assert(!decodeCommand(raw,18,cmd));
+ }
  // CH1's pump and valve use the aligned GPIOs throughout the cycle.
  {HubController ch1(63);assert(ch1.start(2,1000,1000,0,1,0)==Reply::Accepted);
   for(const auto now:{0u,100u,1099u,1100u,2099u,2100u}){

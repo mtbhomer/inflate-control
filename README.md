@@ -1,8 +1,10 @@
-# MeditationVest control · v6
+# MeditationVest control · v7
 
 Mobile Web Bluetooth UI for six independent pump/valve channels and six analog
 sensors. Open the HTTPS GitHub Pages site in Bluefy and upload the matching
 `dist/hub_ble.zip` yourself. See the firmware README for the exact GPIO table.
+
+The default Test channels mode offers one combined cycle and independent pump/valve switches, one channel at a time. Pump switches expire after 2 seconds, valves after 10 seconds; Stop and disconnection turn test outputs off. Patterns & links preserves repeat controls.
 
 Each channel shows voltage, ADC-range percentage and a collapsible graph, plus
 pump/hold times. Link any two boards; run once, set a repeat count, or repeat

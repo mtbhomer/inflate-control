@@ -1,6 +1,6 @@
-import {HubBLE} from './ble.mjs?v=6';
-import {PHASES,REPLIES} from './protocol.mjs?v=6';
-import {sensorRange,validZero,analogReading} from './sensor.mjs?v=6';
+import {HubBLE} from './ble.mjs?v=7';
+import {PHASES,REPLIES} from './protocol.mjs?v=7';
+import {sensorRange,validZero,analogReading} from './sensor.mjs?v=7';
 const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el.textContent!==value)el.textContent=value;};
 const hub=new HubBLE();
@@ -11,6 +11,7 @@ let settings=Array.from({length:6},defaults),pair=defaults();
 function clean(x){const d=defaults();for(const [k,min,max]of [['pump',50,2000],['hold',0,10000],['release',0,10000],['count',1,999]])if(Number.isInteger(x?.[k])&&x[k]>=min&&x[k]<=max)d[k]=x[k];d.mode=x?.mode==='forever'?'forever':'count';return d;}
 try{const v=JSON.parse(localStorage.getItem('inflate.patterns.v2'));if(v?.channels?.length===6){settings=v.channels.map(clean);pair=clean(v.pair);}else{const old=JSON.parse(localStorage.getItem('inflate.times.v1'));if(old?.length===6)settings=old.map(clean);}}catch{}
 let online=false,connecting=false,demo=false,pending=false,stopPending=false,info=null,status=null,received=0,baseline=null,history=[],lastHistory=0,staleShown=false;
+let testMode=true;
 let linked=false,pairChannels=[1,2],details=Array(6).fill(null),simRuns=Array(6).fill(null);
 const analogStates=Array(6).fill(null);
 const number=new Intl.NumberFormat('en-US');
@@ -20,17 +21,18 @@ const enabledMask=()=>info?.mask??63;
 function message(text){setText('message',text);$('message').hidden=!text;}
 function fields(id,t){return `<div class="timings"><div class="timing"><label for="pump-${id}">Pump time</label><div class="number-field"><input id="pump-${id}" type="number" required inputmode="decimal" min="0.05" max="2" step="0.05" value="${t.pump/1000}"><span>s</span></div><small>0.05–2 seconds</small></div><div class="timing"><label for="hold-${id}">Hold before release</label><div class="number-field"><input id="hold-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.hold/1000}"><span>s</span></div><small>0–10 seconds</small></div></div><button class="run" id="run-${id}" disabled>Run once</button><details class="pattern-settings" id="pattern-${id}"><summary>Repeat pattern <span aria-hidden="true">＋</span></summary><div class="timings"><div class="timing"><label for="release-${id}">Released between cycles</label><div class="number-field"><input id="release-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.release/1000}"><span>s</span></div><small>0–10 seconds · valve off</small></div><div class="timing"><label for="mode-${id}">Repeat</label><select id="mode-${id}"><option value="count" ${t.mode==='count'?'selected':''}>Set count</option><option value="forever" ${t.mode==='forever'?'selected':''}>Until Stop</option></select><div id="count-field-${id}" class="count-field"><label for="count-${id}">Total cycles</label><div class="number-field"><input id="count-${id}" type="number" required inputmode="numeric" min="1" max="999" step="1" value="${t.count}"></div></div></div></div><p class="footnote" id="repeat-note-${id}"></p><button class="run pattern-run" id="repeat-${id}" disabled>Start pattern</button></details>`;}
 function bindFields(id){for(const key of ['pump','hold','release','count','mode'])$(`${key}-${id}`).addEventListener('change',()=>{saveTimes(id);render();});$(`run-${id}`).addEventListener('click',()=>run(id,false));$(`repeat-${id}`).addEventListener('click',()=>run(id,true));}
-function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor voltage</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=6" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} ADC range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · ADC floor</span><span>100% · ADC ceiling</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">ADC range, not calibrated pressure or inflation. A disconnected input can still produce readings.</p></details></section>`;}
+function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor voltage</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=7" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} ADC range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · ADC floor</span><span>100% · ADC ceiling</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">ADC range, not calibrated pressure or inflation. A disconnected input can still produce readings.</p></details></section>`;}
+function testControls(ch){return `<div class="test-controls" id="test-controls-${ch}"><div class="test-switches">${['pump','valve'].map(role=>`<button type="button" role="switch" aria-checked="false" aria-label="Channel ${ch} ${role}" id="test-${role}-${ch}" class="output-switch"><span>${role==='pump'?'Pump':'Valve'}</span><span class="switch-track" aria-hidden="true"></span><strong id="test-${role}-state-${ch}">Off</strong></button>`).join('')}</div><p class="footnote">Independent switches · pump max 2 s · valve max 10 s.<br>States are commanded outputs; confirm the physical response.</p></div>`;}
 function cards(){for(let ch=0;ch<6;ch++){
  const node=document.createElement('article');node.className='channel';node.id=`channel-${ch}`;
- node.innerHTML=`<div class="channel-header"><span class="channel-number">${String(ch).padStart(2,'0')}</span><div class="channel-title"><h3>Channel ${ch}</h3><p>${positions[ch]}</p></div><span class="phase-label" id="phase-${ch}">Ready</span></div><p id="cycle-${ch}" class="cycle-note"></p>${analogCard(ch)}<p class="linked-note" id="linked-${ch}" hidden>Linked · use the shared controls above</p><div id="fields-${ch}">${fields(ch,settings[ch])}</div><div class="timeline" aria-hidden="true"><span id="progress-${ch}"></span></div>`;
- $(enabledMask()&(1<<ch)?'channelCards':'futureCards').append(node);bindFields(ch);
+ node.innerHTML=`<div class="channel-header"><span class="channel-number">${String(ch).padStart(2,'0')}</span><div class="channel-title"><h3>Channel ${ch}</h3><p>${positions[ch]}</p></div><span class="phase-label" id="phase-${ch}">Ready</span></div><p id="cycle-${ch}" class="cycle-note"></p><div class="channel-body"><div class="channel-controls">${testControls(ch)}<p class="linked-note" id="linked-${ch}" hidden>Linked · use the shared controls above</p><div id="fields-${ch}">${fields(ch,settings[ch])}</div></div>${analogCard(ch)}</div><div class="timeline" aria-hidden="true"><span id="progress-${ch}"></span></div>`;
+ $(enabledMask()&(1<<ch)?'channelCards':'futureCards').append(node);bindFields(ch);for(const role of ['pump','valve'])$(`test-${role}-${ch}`).addEventListener('click',()=>toggleOutput(ch,role));
  }
  $('pairFields').innerHTML=fields('pair',pair);bindFields('pair');pairChoices();
 }
 function pairChoices(){const enabled=Array.from({length:6},(_,ch)=>ch).filter(ch=>enabledMask()&(1<<ch));if(!pairChannels.every(ch=>enabled.includes(ch)))pairChannels=enabled.slice(0,2);
  for(let i=0;i<2;i++){$(`link-${i}`).innerHTML=enabled.map(ch=>`<option value="${ch}">CH${ch}</option>`).join('');$(`link-${i}`).value=pairChannels[i]??'';}
- $('linkPanel').hidden=enabled.length<2;
+ $('linkPanel').hidden=testMode||enabled.length<2;
 }
 function saveTimes(id){const t=id==='pair'?pair:settings[id];for(const key of ['pump','hold','release','count']){const el=$(`${key}-${id}`);if(el.value!==''&&el.checkValidity())t[key]=key==='count'?Number(el.value):Math.round(Number(el.value)*1000);}t.mode=$(`mode-${id}`).value;try{localStorage.setItem('inflate.patterns.v2',JSON.stringify({channels:settings,pair}));}catch{}}
 function usable(){return online&&status&&performance.now()-received<1000;}
@@ -71,6 +73,11 @@ function renderFields(id,locked,canRun){const t=id==='pair'?pair:settings[id];fo
 }
 function render(){
  const fresh=usable(),active=fresh?status.active:0;
+ document.body.classList.toggle('test-mode',testMode);
+ for(const mode of ['test','patterns']){const selected=(mode==='test')===testMode;$(`mode-${mode}`).setAttribute('aria-pressed',String(selected));$(`mode-${mode}`).disabled=Boolean(active)||pending||stopPending||(online&&!fresh);}
+ $('modeHint').textContent=testMode?'Test one channel at a time. Switch outputs separately, or run a pump–hold–release cycle.':'Run independent or linked patterns.';
+ $('testUpgrade').hidden=!testMode||!online||info?.testControls;
+ $('linkPanel').hidden=testMode||Array.from({length:6},(_,ch)=>enabledMask()&(1<<ch)).filter(Boolean).length<2;
  setText('connectionState',demo?'PREVIEW · NO HARDWARE':online?'BLUETOOTH CONNECTED':connecting?'CONNECTING':'NOT CONNECTED');
  const remaining=6-Array.from({length:6},(_,ch)=>Boolean(enabledMask()&(1<<ch))).filter(Boolean).length;
  setText('futureTitle',`${remaining} more channels`);$('futureSection').hidden=remaining===0;
@@ -85,14 +92,21 @@ function render(){
  $('pairControls').hidden=!linked;setText('pairTitle',`CH${pairChannels[0]} + CH${pairChannels[1]}`);
  renderFields('pair',!linked||pairBusy||pending||stopPending,linked&&fresh&&!pairBusy&&!pending&&!stopPending);
  for(let ch=0;ch<6;ch++){
-  const enabled=Boolean(enabledMask()&(1<<ch)),isLinked=linked&&pairChannels.includes(ch),thisActive=Boolean(active&(1<<ch));
+  const enabled=Boolean(enabledMask()&(1<<ch)),isLinked=!testMode&&linked&&pairChannels.includes(ch),thisActive=Boolean(active&(1<<ch));
   const parent=$(enabled?'channelCards':'futureCards');if($(`channel-${ch}`).parentElement!==parent)parent.append($(`channel-${ch}`));
   $(`fields-${ch}`).hidden=isLinked||!enabled;$(`linked-${ch}`).hidden=!isLinked;
   $(`channel-${ch}`).classList.toggle('active',thisActive);
   setText(`phase-${ch}`,!enabled?'Not enabled':!online?'Disconnected':!fresh?'Unknown':thisActive?PHASES[status.phases[ch]]:'Ready');
-  renderFields(ch,!enabled||isLinked||thisActive||pending||stopPending,enabled&&!isLinked&&fresh&&!thisActive&&!pending&&!stopPending);
+  const testReady=!testMode||(info?.testControls&&!active);
+  renderFields(ch,!enabled||isLinked||thisActive||pending||stopPending,enabled&&!isLinked&&fresh&&!thisActive&&!pending&&!stopPending&&testReady);
+  setText(`run-${ch}`,testMode?'Test pump + valve':'Run once');
+  $(`test-controls-${ch}`).hidden=!testMode;
+  for(const role of ['pump','valve']){const button=$(`test-${role}-${ch}`),on=fresh&&Boolean(status.outputs?.[ch]?.[role]);
+   button.disabled=!enabled||!fresh||!info?.testControls||pending||stopPending||Boolean(active&~(1<<ch))||(thisActive&&status.phases[ch]!==5);
+   button.setAttribute('aria-checked',String(on));setText(`test-${role}-state-${ch}`,fresh?(on?'On':'Off'):'—');
+  }
   const d=details[ch],detailFresh=d&&performance.now()-d.received<1000&&d.phase===status?.phases[ch];
-  setText(`cycle-${ch}`,thisActive&&detailFresh?`Cycle ${d.cycle}${d.repeats?` of ${d.repeats}`:' · until Stop'}${(d.group&(d.group-1))?' · linked':''}`:'');
+  setText(`cycle-${ch}`,thisActive&&status.phases[ch]===5?'Manual test · tap an active switch to turn it off':thisActive&&detailFresh?`Cycle ${d.cycle}${d.repeats?` of ${d.repeats}`:' · until Stop'}${(d.group&(d.group-1))?' · linked':''}`:'');
   const duration=d?(d.phase===1?100:d.phase===2?d.pump:d.phase===3?d.hold:d.release):1;
   $(`progress-${ch}`).style.width=thisActive&&detailFresh?`${Math.max(0,Math.min(100,(1-d.remaining/Math.max(1,duration))*100))}%`:'0%';
  }
@@ -116,16 +130,26 @@ function drawChart(){const now=performance.now(),pts=baseline===null?[]:history.
 }
 async function run(id,repeat){
  const mask=id==='pair'?pairMask():1<<id;
- if(!usable()||pending||stopPending||(status.active&mask))return;
+ if(!usable()||pending||stopPending||(status.active&mask)||(testMode&&(repeat||!info?.testControls||status.active)))return;
  if(id==='pair'&&!linked)return;
  const keys=repeat?['pump','hold','release',...($(`mode-${id}`).value==='count'?['count']:[])]:['pump','hold'];
  for(const key of keys)if(!$(`${key}-${id}`).reportValidity())return;
  saveTimes(id);const t=id==='pair'?pair:settings[id],count=repeat?(t.mode==='forever'?0:t.count):1;
  pending=true;message('');render();
  try{if(demo){const now=performance.now();for(let ch=0;ch<6;ch++)if(mask&(1<<ch))simRuns[ch]={...t,repeats:count,cycle:1,phase:1,start:now,group:mask};tickDemo();message(`Preview: ${repeat?'pattern':'single cycle'} started.`);}
- else{const s=await hub.command(1,mask,t.pump,t.hold,repeat?t.release:0,count);message(REPLIES[s.reply]||'Hub replied.');}}
+ else{const s=await hub.command(testMode?4:1,mask,t.pump,t.hold,repeat?t.release:0,count);message(REPLIES[s.reply]||'Hub replied.');}}
  catch(e){message(e.message);}finally{pending=false;render();}
 }
+async function toggleOutput(ch,role){
+ if(!testMode||!info?.testControls||!usable()||pending||stopPending||(status.active&~(1<<ch))||![0,5].includes(status.phases[ch]))return;
+ const turnOn=!status.outputs?.[ch]?.[role];pending=true;message('');render();
+ try{
+  if(demo){const now=performance.now();let r=simRuns[ch];if(!r||r.phase!==5)r={phase:5,group:1<<ch,cycle:1,repeats:1,pump:2000,hold:10000,release:0,pumpOn:false,valveOn:false};
+   r[role+'On']=turnOn;if(turnOn)r[role+'Started']=now;simRuns[ch]=r;tickDemo();message(`Preview: CH${ch} ${role} ${turnOn?'on':'off'}.`);
+  }else{const result=await hub.command(3,1<<ch,role==='pump'?Number(turnOn):2,role==='valve'?Number(turnOn):2,0,0);message(result.reply===1?`CH${ch} ${role} command confirmed.`:REPLIES[result.reply]||'Hub replied.');}
+ }catch(e){message(e.message);}finally{pending=false;render();}
+}
+for(const mode of ['test','patterns'])$(`mode-${mode}`).addEventListener('click',()=>{if(pending||stopPending||(online&&(!usable()||status.active)))return;testMode=mode==='test';message('');render();});
 async function stop(){if(!online||stopPending)return;stopPending=true;render();
  try{if(demo){simRuns.fill(null);tickDemo();message('Preview: all patterns stopped and released.');}
  else{const s=await hub.command(2);message(s.reply===6?'All outputs OFF · all patterns stopped.':REPLIES[s.reply]||'Check hub status.');}}
@@ -146,10 +170,12 @@ $('linkToggle').addEventListener('click',()=>{if(pending||(online&&!usable())||(
 $('preview').addEventListener('click',()=>{
  if(demo){demo=false;online=false;resetAnalog();info=null;status=null;history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','Open in Bluefy on your iPhone.');render();return;}
  if(online||connecting)return;
- demo=true;online=true;resetAnalog();info={mask:63,firmware:6,analogChannels:CHANNELS,hxChannel:null};baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','Explore the controls.');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
+ demo=true;online=true;resetAnalog();info={mask:63,firmware:7,testControls:true,analogChannels:CHANNELS,hxChannel:null};baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','Explore the controls.');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
 });
 function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).fill(0);let active=0;
- for(let ch=0;ch<6;ch++){let r=simRuns[ch];if(!r)continue;let elapsed=now-r.start;const total=100+r.pump+r.hold;
+ for(let ch=0;ch<6;ch++){let r=simRuns[ch];if(!r)continue;
+  if(r.phase===5){if(r.pumpOn&&now-r.pumpStarted>=2000)r.pumpOn=false;if(r.valveOn&&now-r.valveStarted>=10000)r.valveOn=false;if(!r.pumpOn&&!r.valveOn){simRuns[ch]=null;continue;}phases[ch]=5;active|=1<<ch;details[ch]={...r,received:now,remaining:0};continue;}
+  let elapsed=now-r.start;const total=100+r.pump+r.hold;
   if(r.phase===4){if(elapsed>=r.release&&elapsed>0){r.phase=1;r.start=now;r.cycle++;elapsed=0;}}
   else if(elapsed>=total){if(r.repeats&&r.cycle>=r.repeats){simRuns[ch]=null;continue;}r.phase=4;r.start=now;elapsed=0;}
   else r.phase=elapsed<100?1:elapsed<100+r.pump?2:3;
@@ -158,9 +184,10 @@ function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).
  }
  const r=simRuns[2],rise=r&&r.phase!==4?(r.phase===1?0:r.phase===2?Math.min(1,(now-r.start-100)/r.pump):1):0;
  const raw=Math.min(8388607,Math.round(1764600+Math.sin(now/950)*90+rise*6624100));
- telemetry({kind:'summary',active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true});
+ const outputs=CHANNELS.map(ch=>({pump:phases[ch]===5?simRuns[ch].pumpOn:phases[ch]===2,valve:phases[ch]===5?simRuns[ch].valveOn:[1,2,3].includes(phases[ch])}));
+ telemetry({kind:'summary',outputs,active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true});
  for(const ch of CHANNELS){
-  const a=simRuns[ch],level=a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
+  const a=simRuns[ch],level=a?.phase===5?(a.pumpOn ? .5 : a.valveOn ? .2 : 0):a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
   const mv=Math.round(200+level*2500+Math.sin(now/800+ch)*3);
   analogTelemetry({kind:'analog',channel:ch,flags:3,raw:Math.round(mv/3100*4095),millivolts:mv,age:20,fresh:true});
  }

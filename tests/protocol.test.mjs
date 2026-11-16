@@ -40,7 +40,7 @@ test('summary decodes six simultaneous phases and rejects inconsistent masks',()
 test('channel detail cannot acknowledge a command; old firmware requests an upgrade',()=>{
  const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0x12);v.setUint8(2,2);v.setUint8(3,6);v.setUint16(4,3,true);v.setUint32(6,info.session,true);v.setUint16(10,1000,true);v.setUint16(12,1000,true);v.setUint16(14,500,true);v.setUint16(16,5,true);v.setUint16(18,400,true);
  const h=fake();let emitted=false,acked=false;h.addEventListener('detail',()=>emitted=true);h.waiters.set(3,{resolve:()=>acked=true});h.status(v);assert.equal(emitted,true);assert.equal(acked,false);assert.equal(decodeStatus(v).cycle,3);
- v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v6 MeditationVest/);
+ v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v7 MeditationVest/);
 });
 
 import {analogReading} from '../dist/sensor.mjs';
@@ -101,4 +101,29 @@ test('v6 accepts the CH1 GPIO revision while retaining six analog capabilities',
  v.setUint32(14,info.session,true);v.setUint8(18,31);v.setUint8(19,63);
  assert.equal(decodeInfo(v).firmware,6);assert.deepEqual(decodeInfo(v).analogChannels,[0,1,2,3,4,5]);
  v.setUint8(3,7);assert.throws(()=>decodeInfo(v));
+});
+
+const benchInfo={...info,mask:63,firmware:7,testControls:true,analogChannels:[0,1,2,3,4,5]};
+test('v7 advertises test controls separately from earlier firmware',()=>{
+ const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,63);v.setUint8(2,255);v.setUint8(3,7);
+ for(const [p,n]of [[4,50],[6,2000],[8,10000],[10,100],[12,10000]])v.setUint16(p,n,true);
+ v.setUint32(14,info.session,true);v.setUint8(18,63);v.setUint8(19,63);assert.equal(decodeInfo(v).testControls,true);
+ v.setUint8(3,6);v.setUint8(18,31);assert.equal(decodeInfo(v).testControls,false);
+});
+test('test switches encode only the selected output and require one channel plus v7',()=>{
+ const args={op:3,mask:2,pumpMs:1,holdMs:2,releaseMs:0,repeats:0,seq:1,session:info.session};
+ const b=new Uint8Array(encodeCommand(args,benchInfo));assert.deepEqual([...b],[2,3,2,0,1,0,1,0,2,0,120,86,52,18,0,0,0,0]);
+ assert.throws(()=>encodeCommand(args,info));for(const mask of [0,3,64])assert.throws(()=>encodeCommand({...args,mask},benchInfo));
+ assert.throws(()=>encodeCommand({...args,pumpMs:3},benchInfo));
+ const cycle={...args,op:4,pumpMs:1000,holdMs:1000,repeats:1};assert.equal(new DataView(encodeCommand(cycle,benchInfo)).getUint8(1),4);
+ assert.throws(()=>encodeCommand({...cycle,repeats:0},benchInfo));
+});
+test('manual output summary reports each commanded output without confusing analog voltage',()=>{
+ const v=status();v.setUint8(2,16);v.setUint8(3,2);v.setUint8(16,5<<3);v.setInt32(10,4,true);
+ const s=decodeStatus(v);assert.equal(s.phases[1],5);assert.deepEqual(s.outputs[1],{pump:true,valve:false});assert.deepEqual(s.outputs[0],{pump:false,valve:false});
+});
+test('Stop cancels a queued test switch as well as queued cycles',async()=>{
+ for(const op of [3,4]){const h=fake();h.info=benchInfo;let writes=0;h.commandChar={async writeValueWithResponse(bytes){writes++;const v=new DataView(bytes);const s=status(v.getUint16(4,true),info.session,6);s.setUint8(2,96);s.setInt32(10,0,true);h.status(s);}};
+ const start=h.command(op,2,op===3?1:1000,op===3?2:1000,0,op===3?0:1);const stop=h.command(2);
+ await assert.rejects(start,/cancelled/);assert.equal((await stop).reply,6);assert.equal(writes,1);}
 });

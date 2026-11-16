@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v6 · six analog channels
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v7 · six analog channels
 
 Use this package with the six-channel hub pin table. BLE device: **MeditationVest**.
 
@@ -12,8 +12,8 @@ Use this package with the six-channel hub pin table. BLE device: **MeditationVes
 | CH5 | D13 | D14 | D33 |
 
 All sensors use 3.3 V and a separate ADC1 input. Every hub connector uses
-**P4 pump / P5 valve**, with P6 unused. Firmware v6 changes only CH1&#x27;s actuator
-GPIO assignment from v5: **pump D23, valve D22**. Other channel pins are unchanged.
+**P4 pump / P5 valve**, with P6 unused. Firmware v6 and v7 use CH1&#x27;s revised actuator
+GPIO assignment: **pump D23, valve D22**. Other channel pins are unchanged.
 
 ## CH1 wiring and firmware must agree
 
@@ -25,8 +25,8 @@ GPIO assignment from v5: **pump D23, valve D22**. Other channel pins are unchang
   the M3/L3 command-wire ends; if already correct, do not swap again.
 - Keep driver ends, power wiring and the working pump in V1 / valve in P1.
   Standard modules already use J1 P5 for pump and P4 for valve.
-- Upload **v6** yourself with battery physically disconnected and JP5 open.
-  v5 assigns CH1 D22/D23 oppositely. Verify the complete signal paths and v6
+- Upload **v7** yourself with battery physically disconnected and JP5 open.
+  v5 assigns CH1 D22/D23 oppositely. Verify the complete signal paths and v7
   output timing with actuator power disconnected before a powered test.
 
 This update changes no sensor pin, cycle timing, repeat/link behavior or BLE name.
@@ -54,7 +54,28 @@ A–X on the component side, USB up.
 6. Verify local 6 V supplies and test one unworn, vented module at a time.
    Six-channel controls do not establish six-pump battery, fuse or wire capacity.
 
-## Controls
+## Channel tests
+
+The default **Test channels** view tests one channel at a time. Each channel has
+its own analog voltage, ADC percentage and graph beside its controls (below on
+narrow phones).
+
+- **Test pump + valve**: select the valve for 100 ms, run the pump for the selected
+  time, hold for the selected delay, then turn both off. No repeat or fixed cooldown.
+- **Pump switch**: independent ON/OFF, automatically OFF after 2 seconds.
+- **Valve switch**: independent ON/OFF, automatically OFF after 10 seconds.
+- A switch affects only its named output. It does not restart an expired output
+  or extend the other output&#x27;s timer. Readouts report ESP32-commanded states;
+  physical pump/valve feedback is not measured.
+- Only one test channel can be active. Firmware rejects tests during a pattern,
+  other-channel starts during a test, and manual switches during a combined cycle.
+- Stop &amp; release and BLE disconnection end test outputs. Reconnect never resumes.
+
+Use **Patterns &amp; links** for the existing independent/linked repeat controls.
+Earlier firmware remains usable there, but channel tests require v7. GPIOs remain
+exactly as in v6: CH1 pump D23, valve D22; sensor D34.
+
+## Pattern controls
 
 - Pump 0.05–2 seconds; hold and release interval 0–10 seconds.
 - Valve lead 100 ms. Pump stops before hold; valve releases after hold.
@@ -83,10 +104,20 @@ and six-channel hardware timing remain to be checked. Stale values are blanked.
 ## Protocol
 
 Service `8d5a0001-4c7b-4f45-9d68-8e0c2c970001`; command/status/info use 0002,
-0003/0004 respectively. Protocol version 2, firmware revision 5, enabled mask63,
+0003/0004 respectively. Protocol version 2, firmware revision 7, enabled mask63,
 analog mask63, sensor selector255. Fixed 20-byte summary/detail/analog packets
 retain channel identity and session nonce. Commands are 18 bytes, sequenced,
 serialized and session-checked. Stop bypasses the normal command queue.
+
+Firmware v7 advertises flags63. Opcodes: 1 pattern, 2 stop, 3 manual output,
+4 exclusive test cycle. Opcode3 uses the pump/hold fields as 0=OFF, 1=ON,
+2=unchanged, with release/repeats=0; the mask must contain one enabled channel.
+Opcode4 uses ordinary pump/hold durations, release0/repeats1, one channel.
+All non-stop commands retain session, sequence and 250 ms receive-expiry checks.
+Phase5 is manual testing. In v7 control summaries, the previously unused raw
+field holds 12 output bits (pump then valve for each channel); flags0 and age65535.
+This lets one summary atomically acknowledge a command and report all output
+states. Analog values continue in separate channel-labelled 0x20 packets.
 
 ## Checks
 
