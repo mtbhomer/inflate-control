@@ -42,6 +42,48 @@
       "analog": 33
     }
   },
+  "hubConnectorRevision": "2026-11-16-uniform",
+  "hubConnectorPins": {
+    "batteryPositive": 1,
+    "batteryReturn": 2,
+    "controlGround": 3,
+    "pump": 4,
+    "valve": 5,
+    "unused": 6,
+    "analog": 7,
+    "sensorSupply": 8
+  },
+  "ch1PairedCorrection": {
+    "hub": {
+      "pump": {
+        "gpio": 22,
+        "from": "A14",
+        "to": "A15"
+      },
+      "valve": {
+        "gpio": 23,
+        "from": "A15",
+        "to": "A14"
+      }
+    },
+    "module": {
+      "pump": {
+        "from": "M3",
+        "to": "L3",
+        "driver": "Q2.PWM",
+        "driverHole": "D1",
+        "socket": "V1"
+      },
+      "valve": {
+        "from": "L3",
+        "to": "M3",
+        "driver": "Q1.PWM",
+        "driverHole": "V1",
+        "socket": "P1"
+      }
+    },
+    "completed": false
+  },
   "conditionalBoardPins": [
     16,
     17
@@ -92,7 +134,7 @@
     "HubController.h": "872a250f104a1eac5fbaff71103536c12b23209d9256cb2fbf1c2750aa04cbf7",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "cc637fb6ad6f3578e7a90b7cba024c7db86ca1fcdf4ba79872e8f8ae5239dce3",
-    "README.md": "e5b614ecd2252bc4c65830252ebfd9158af7d08e3cad19db2b3b14cda3cf7ca5",
+    "README.md": "4ca5f5ce17be50f4253004bdde34bff2ff2f24a9bb541965d9ab32b962968edd",
     "hub_ble.ino": "cacfd13496f498918788556f9cc72611a640517a16105b8758d70a7a9663b853"
   }
 }

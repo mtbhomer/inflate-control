@@ -11,9 +11,24 @@ Use this package with the six-channel hub pin table. BLE device: **MeditationVes
 | CH4 | D16 | D27 | VN / GPIO39 |
 | CH5 | D13 | D14 | D33 |
 
-All sensors use 3.3 V and a separate ADC1 input. Hub P6 is unused on all six
-ports. CH1 retains its working P5 pump / P4 valve arrangement; other channels
-use P4 pump / P5 valve. CH1's physical pump is at module V1, valve at P1.
+All sensors use 3.3 V and a separate ADC1 input. The uniform hub manual dated
+16 November uses **P4 pump / P5 valve on every channel**; P6 is unused.
+This is a connector-wiring revision; all firmware GPIO assignments above are unchanged.
+
+For the previously working CH1 exception, complete both corrections with battery
+and USB disconnected before using the uniform pinout:
+
+- Hub: D22 / C15 → P4 / A15 (pump); D23 / C16 → P5 / A14 (valve).
+  Exchange the old A14/A15 wire ends if installed.
+- CH1 module: exchange only the command-wire ends at M3 / J1 P4 and L3 / J1 P5.
+  The actual pump-driver lead must end at L3, the valve-driver lead at M3.
+  Keep driver ends, power wires and the working pump at V1 / valve at P1 unchanged.
+- Confirm end to end: D22 → hub P4 → module P5 → pump driver;
+  D23 → hub P5 → module P4 → valve driver. Do not swap a board already matching
+  those paths. Changing only one side reverses actuator commands.
+
+Standard modules already use J1 P5 for pump and P4 for valve. No new upload is
+needed if v5 is already installed. Physical CH1 rework is not recorded as completed.
 Module printed coordinates are A–X on the solder side; hub coordinates remain
 A–X on the component side, USB up.
 
