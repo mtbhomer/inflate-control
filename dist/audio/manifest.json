@@ -1,0 +1,196 @@
+{
+  "model": "elevenlabs/eleven-multilingual-v2",
+  "provider": "OpenRouter",
+  "voices": [
+    "sarah",
+    "lily"
+  ],
+  "prompts": {
+    "preview": "Notice your body, and let your breathing stay natural.",
+    "settle": "Settle in, and let your breathing stay natural.",
+    "front": "Notice gentle contact at the front of your body. Let your breathing stay natural.",
+    "upper": "Bring attention to your upper back. Notice contact around your shoulders.",
+    "middle": "Move attention to your middle back. Notice support and sensation.",
+    "lower": "Continue to your lower back. Notice contact and relaxation in this area.",
+    "complete": "The exercise is complete. Take a moment to notice how your body feels.",
+    "fault": "The exercise has stopped. Check the channel before starting again."
+  },
+  "clips": [
+    {
+      "file": "sarah-preview.mp3",
+      "bytes": 45600,
+      "sha256": "6553f88dac4ea84a3e0eed54984ae281c080c071c904926d53eeb6d04c1fdbee",
+      "durationSeconds": 2.786395,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-settle.mp3",
+      "bytes": 49362,
+      "sha256": "db487a622c3c23aaf83a3abe1285d8d7b0c96465a0081f036cdc59beb36359e1",
+      "durationSeconds": 3.018594,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-front.mp3",
+      "bytes": 76111,
+      "sha256": "f7fd76e9e5413c723bd77508bf94fa867ad06ce32cbe7653a0cf6ab5cd04aa36",
+      "durationSeconds": 4.690431,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-upper.mp3",
+      "bytes": 70260,
+      "sha256": "cb228a22d8ae95b64dc66b8e1564e02c570c0f66f17e7610ac503199b911a97e",
+      "durationSeconds": 4.318912,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-middle.mp3",
+      "bytes": 74021,
+      "sha256": "cc079db2983492957bf8849acf6290d2fea2c24b0f8af6d7ddf9328dbec0475f",
+      "durationSeconds": 4.551111,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-lower.mp3",
+      "bytes": 80709,
+      "sha256": "0eaac96f67a9e2723f3e338b5861be32503dc78b923019ec236d6e61fe9449a5",
+      "durationSeconds": 4.96907,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-complete.mp3",
+      "bytes": 76947,
+      "sha256": "0b45bca85634c1065e288201578393e6b51a234cc137a4ae58b28a4cff99cda3",
+      "durationSeconds": 4.736871,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "sarah-fault.mp3",
+      "bytes": 61065,
+      "sha256": "80f5b821cd3aa5df40e1067e67af504b7d90900d14ab48e01f3d5d4d726d09c5",
+      "durationSeconds": 3.761633,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-preview.mp3",
+      "bytes": 54377,
+      "sha256": "dbdf336cc4928210edb81674740f01d26587a4bdd27e7bf6e6a3a8bea9f33600",
+      "durationSeconds": 3.343673,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-settle.mp3",
+      "bytes": 50198,
+      "sha256": "c25a1771ed9577c9d8fc7e8dd72357022a42a7ffdf068fdfe39c77d897f5008c",
+      "durationSeconds": 3.065034,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-front.mp3",
+      "bytes": 86560,
+      "sha256": "84c07cd7aaa188a153be71a546f536f51b1915f5a5145ee7007e213051b7b179",
+      "durationSeconds": 5.34059,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-upper.mp3",
+      "bytes": 79873,
+      "sha256": "71b093b2e84467bdf4cb18d3ff86a380bc0ae8263cb59f77a13bfe02f29365fc",
+      "durationSeconds": 4.92263,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-middle.mp3",
+      "bytes": 71096,
+      "sha256": "d77e23de1ee24b938d7f4a6b9a8684124878f427c3e1ed562830a5cce2693206",
+      "durationSeconds": 4.365351,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-lower.mp3",
+      "bytes": 84470,
+      "sha256": "b2c0e4c7e8353f50a72d064460f006451385001bf13627189bee071adcfdcf34",
+      "durationSeconds": 5.20127,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-complete.mp3",
+      "bytes": 74439,
+      "sha256": "5a13199fc3edc4f7bb14ae9875ecdf3fdd8b8446aabcfdef6009d81e79303235",
+      "durationSeconds": 4.597551,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    },
+    {
+      "file": "lily-fault.mp3",
+      "bytes": 60647,
+      "sha256": "36358471233d483a592cda7fb7cb768babd922f0cd9cfe44743013a9c919501a",
+      "durationSeconds": 3.715193,
+      "format": {
+        "codec_name": "mp3",
+        "sample_rate": "44100",
+        "channels": 1
+      }
+    }
+  ]
+}

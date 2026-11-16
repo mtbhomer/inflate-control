@@ -1,12 +1,12 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=7';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=8';
 export class HubBLE extends EventTarget{
- constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Channel tests switch off. Fixed-count patterns finish; Until Stop ends after the current cycle.');}
+ constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
- async connect(){
+ async connect(knownDevice=null){
   if(!globalThis.isSecureContext)throw Error('Open the hosted HTTPS link in Bluefy.');
   if(!navigator.bluetooth)throw Error('On iPhone, open this page in Bluefy to use Bluetooth.');
   // requestDevice is called directly from the button gesture, before any await.
-  const request=navigator.bluetooth.requestDevice({filters:[{services:[UUID.service]}]});
+  const request=knownDevice?Promise.resolve(knownDevice):navigator.bluetooth.requestDevice({filters:[{services:[UUID.service]}]});
   const generation=++this.generation;
   const device=await request;
   if(generation!==this.generation)return;
@@ -21,7 +21,7 @@ export class HubBLE extends EventTarget{
     this.seq=0;this.statusChar.addEventListener('characteristicvaluechanged',this.onNotify);
     await checked(this.statusChar.startNotifications());
     const snapshot=await checked(this.statusChar.readValue());
-    this.emit('ready',{info:this.info,name:device.name||'MeditationVest'});this.status(snapshot);
+    this.emit('ready',{info:this.info,name:device.name||'MeditationVest',deviceId:device.id});this.status(snapshot);
    };
    await Promise.race([handshake(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Hub connection timed out. Reconnect and try again.')),15000);})]);
   }catch(error){if(generation===this.generation)this.disconnect();throw error;}finally{clearTimeout(timeout);}
@@ -29,20 +29,22 @@ export class HubBLE extends EventTarget{
 
  status(value){try{
   const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
+  if(s.kind==='routine'){if(!this.info.routines)throw Error('Unexpected routine status; reconnect.');this.emit('routine',s);return;}
   if(s.kind==='analog'){if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
   if(s.kind==='detail'){if(s.phase===5&&!this.info.testControls)throw Error('Unexpected test status; reconnect.');if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
   if(this.info.testControls&&(s.flags!==0||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
   if(this.info.testControls&&s.phases.some((phase,ch)=>{const bits=(s.raw>>(2*ch))&3;return phase===5?bits===0:bits!==([0,2,3,2,0][phase]);}))throw Error('Output states disagree with channel phases; reconnect.');
   if(!this.info.testControls&&s.phases.includes(5))throw Error('Unexpected manual test status; reconnect.');
+  if((s.routineKind||s.routineFault)&&!this.info.routines)throw Error('Unexpected routine status; reconnect.');
   if(s.active&~this.info.mask)throw Error('Channel configuration changed; reconnect.');
   this.emit('status',s);
   const waiter=this.waiters.get(s.seq);if(waiter){clearTimeout(waiter.timer);this.waiters.delete(s.seq);waiter.resolve(s);}
   if(s.reply===6)for(const [seq,w] of this.waiters)if(seq<s.seq){clearTimeout(w.timer);this.waiters.delete(seq);w.resolve({...s,superseded:true});}
  }catch(e){this.emit('error',e.message);this.disconnect();}}
- async command(op,mask=0,pumpMs=0,holdMs=0,releaseMs=0,repeats=1){
+ async command(op,mask=0,pumpMs=0,holdMs=0,releaseMs=0,repeats=1,aux=0){
   if(!this.device?.gatt.connected||!this.commandChar||!this.info)throw Error('Connect to the hub first.');
   const generation=this.generation,seq=++this.seq;
-  const bytes=encodeCommand({op,mask,pumpMs,holdMs,releaseMs,repeats,seq,session:this.info.session},this.info);
+  const bytes=encodeCommand({op,mask,aux,pumpMs,holdMs,releaseMs,repeats,seq,session:this.info.session},this.info);
   // Stop invalidates any START that has not entered a GATT write yet.
   if(op===2)this.cancelStartsThrough=seq;
   let resolve,reject,timer,expired=false;
@@ -62,6 +64,17 @@ export class HubBLE extends EventTarget{
   return outcome;
 
  }
+ async startRoutine(plan){
+  const generation=this.generation,cancel=this.cancelStartsThrough||0;
+  const check=()=>{if(generation!==this.generation||cancel!==(this.cancelStartsThrough||0))throw Error('Routine cancelled before start.');};
+  for(let i=0;i<plan.stages.length;i++){
+   check();const s=plan.stages[i],reply=await this.command(5,s.mask,s.pump,s.hold,s.release,s.window,i);
+   check();if(reply.reply!==1)throw Error('The hub did not accept the zone settings. Nothing new was started.');
+   const targetReply=await this.command(7,s.mask,s.targets[0],s.targets[1]??0,0,0,i);
+   check();if(targetReply.reply!==1)throw Error('The hub did not accept the sensor targets. Nothing new was started.');
+  }
+  check();return this.command(6,plan.stages.length,plan.settle,0,0,plan.repeats,plan.kind);
+ }
  clear(message){
   ++this.generation;
   if(this.statusChar)this.statusChar.removeEventListener('characteristicvaluechanged',this.onNotify);
@@ -69,5 +82,5 @@ export class HubBLE extends EventTarget{
   for(const w of this.waiters.values()){clearTimeout(w.timer);w.reject(Error('Bluetooth disconnected; command outcome is unknown.'));}
   this.waiters.clear();this.commandChar=null;this.statusChar=null;this.info=null;this.seq=0;this.cancelStartsThrough=0;this.writeTail=Promise.resolve();this.emit('disconnected',message);
  }
- disconnect(){const device=this.device;this.clear('Disconnected. Channel tests switch off. Fixed-count patterns finish; Until Stop ends after the current cycle.');if(device?.gatt.connected)device.gatt.disconnect();this.device=null;}
+ disconnect(){const device=this.device;this.clear('Disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');if(device?.gatt.connected)device.gatt.disconnect();this.device=null;}
 }

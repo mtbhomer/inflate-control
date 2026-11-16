@@ -21,8 +21,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/protocol.test.mjs
+      - run: npm ci --ignore-scripts
+      - run: node --test tests/*.test.mjs
       - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_ble_test.cpp -o /tmp/hub-ble-test && /tmp/hub-ble-test
+      - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_routine_test.cpp -o /tmp/hub-routine-test && /tmp/hub-routine-test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

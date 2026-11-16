@@ -19,7 +19,7 @@ BLECharacteristic *statusChar,*infoChar;
 std::atomic<bool> connected{false},restartAdvertising{false},serialStop{false},endContinuous{false};
 std::atomic<uint32_t> session{0};
 portMUX_TYPE stateMux=portMUX_INITIALIZER_UNLOCKED;
-uint8_t statusBytes[20]={},detailBytes[6][20]={};
+uint8_t statusBytes[20]={},detailBytes[6][20]={},routineBytes[20]={};
 // Stop mailbox bypasses the normal queue; only controlTask changes GPIO.
 Command stopCommand;
 bool stopPending=false;
@@ -27,11 +27,12 @@ uint16_t lastSeq=0;
 Reply reply=Reply::None;
 uint32_t currentSession=0;
 AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO task.
+SensorFeedback sensorSnapshot[6]; // Averaged raw samples copied to the control task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=7; // Six sensors and exclusive channel tests.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=8; // Guided routines, tests and six sensors.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
- put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=63;b[19]=ANALOG_MASK;
+ put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=127;b[19]=ANALOG_MASK;
 }
 class InfoCallbacks:public BLECharacteristicCallbacks{
  void onRead(BLECharacteristic*c) override {uint8_t b[20];fillInfo(b);c->setValue(b,20);}
@@ -40,7 +41,7 @@ class ServerCallbacks:public BLEServerCallbacks{
  void onConnect(BLEServer*)override{uint32_t n=esp_random();session.store(n?n:1);connected.store(true);}
  void onDisconnect(BLEServer*)override{
    connected.store(false);session.store(0);restartAdvertising.store(true);
-   endContinuous.store(true); // Finite patterns finish; continuous patterns finish their current cycle.
+   endContinuous.store(true); // Routines/tests stop. Legacy patterns retain their disconnect behavior.
  }
 };
 class CommandCallbacks:public BLECharacteristicCallbacks{
@@ -64,8 +65,9 @@ void process(Command c,uint32_t now){
 void controlTask(void*){
  for(;;){
    const uint32_t now=millis();
+   portENTER_CRITICAL(&stateMux);memcpy(controller.sensors,sensorSnapshot,sizeof(sensorSnapshot));portEXIT_CRITICAL(&stateMux);
    const uint32_t nonce=session.load();
-   if(nonce!=currentSession){currentSession=nonce;lastSeq=0;reply=Reply::None;}
+   if(nonce!=currentSession){currentSession=nonce;lastSeq=0;reply=Reply::None;controller.clearStagedRoutine();}
    if(endContinuous.exchange(false))controller.endContinuous();
    controller.update(now);
    if(serialStop.exchange(false)){controller.stop();reply=Reply::Stopped;xQueueReset(commands);}
@@ -75,10 +77,11 @@ void controlTask(void*){
    for(unsigned n=0;n<4 && xQueueReceive(commands,&c,0)==pdTRUE;++n)process(c,now);
    applyOutputs();
    const uint32_t sampledAt=millis();
-   uint8_t b[20],details[6][20];
+   uint8_t b[20],details[6][20],routine[20];
    encodeControlSummary(b,controller,currentSession,lastSeq,reply);
    for(uint8_t ch=0;ch<6;++ch)encodeDetail(details[ch],controller,ch,currentSession,sampledAt);
-   portENTER_CRITICAL(&stateMux);memcpy(statusBytes,b,20);memcpy(detailBytes,details,sizeof(details));portEXIT_CRITICAL(&stateMux);
+   encodeRoutine(routine,controller,currentSession,sampledAt);
+   portENTER_CRITICAL(&stateMux);memcpy(statusBytes,b,20);memcpy(detailBytes,details,sizeof(details));memcpy(routineBytes,routine,20);portEXIT_CRITICAL(&stateMux);
    vTaskDelay(pdMS_TO_TICKS(1));
  }
 }
@@ -91,7 +94,7 @@ void setup(){
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v7: channel tests; CH1 pump D23, valve D22; verify D16/D17 with actuator battery disconnected. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v8: guided front/back routines and channel tests; unchanged GPIO map. x stops.");
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}
@@ -103,7 +106,7 @@ void setup(){
  infoChar=service->createCharacteristic(INFO_UUID,BLECharacteristic::PROPERTY_READ);infoChar->setCallbacks(new InfoCallbacks());
  uint8_t info[20];fillInfo(info);infoChar->setValue(info,20);
  service->start();auto*adv=BLEDevice::getAdvertising();adv->addServiceUUID(SERVICE_UUID);adv->setScanResponse(true);adv->setMinPreferred(0x06);adv->setMaxPreferred(0x12);BLEDevice::startAdvertising();
- Serial.println("Advertising MeditationVest. Sensor display-only; finite patterns finish after disconnect; continuous patterns end after current cycle.");
+ Serial.println("Advertising MeditationVest. Sensor-target routines; debug sensors display-only; routines and tests stop on disconnect; legacy pattern behavior retained.");
 }
 void loop(){
  for(unsigned n=0;n<32 && Serial.available();++n){char c=Serial.read();if(c=='x'||c=='X')serialStop.store(true);}
@@ -117,17 +120,22 @@ void loop(){
      const uint32_t mv=analogReadMilliVolts(ANALOG_PINS[ch]);
      analogSensors[ch].add(adcValue,mv>65535?65535:uint16_t(mv),millis());
    }
+   SensorFeedback feedback[6];
+   for(unsigned ch=0;ch<6;++ch){const auto&s=analogSensors[ch];feedback[ch]={s.raw,s.lastSample,s.limits,s.available};}
+   portENTER_CRITICAL(&stateMux);memcpy(sensorSnapshot,feedback,sizeof(feedback));portEXIT_CRITICAL(&stateMux);
  }
- static uint32_t lastNotify=0;static uint8_t telemetryChannel=0;
+ static uint32_t lastNotify=0;static uint8_t telemetryChannel=0,detailChannel=0;static bool sendRoutine=true;
  if(statusChar && millis()-lastNotify>=50){
-   lastNotify=millis();uint8_t b[20],details[6][20];
-   portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));portEXIT_CRITICAL(&stateMux);
+   lastNotify=millis();uint8_t b[20],details[6][20],routine[20];
+   portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));memcpy(routine,routineBytes,20);portEXIT_CRITICAL(&stateMux);
    statusChar->setValue(b,20);if(connected.load())statusChar->notify();
-   // Three notifications per 50 ms: summary plus one channel's detail and
-   // analog frame. Six channels refresh about every 300 ms without flooding BLE.
+   // Three notifications per 50 ms: summary, alternating routine/detail, analog.
+   // Routine refresh ~100 ms; each analog ~300 ms; each legacy detail ~600 ms.
    if(connected.load()){
      const uint8_t ch=telemetryChannel;telemetryChannel=(telemetryChannel+1)%6;
-     statusChar->setValue(details[ch],20);statusChar->notify();
+     if(sendRoutine)statusChar->setValue(routine,20);
+     else{statusChar->setValue(details[detailChannel],20);detailChannel=(detailChannel+1)%6;}
+     sendRoutine=!sendRoutine;statusChar->notify();
      uint8_t analogBytes[20];const uint32_t now=millis();const auto &sensor=analogSensors[ch];
      encodeAnalog(analogBytes,ch,session.load(),sensor.flags(now),sensor.raw,sensor.millivolts,sensor.age(now));
      statusChar->setValue(analogBytes,20);statusChar->notify();

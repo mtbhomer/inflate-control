@@ -1,6 +1,7 @@
-# MeditationVest BLE v7 · six analog channels
+# MeditationVest BLE v8
 
-Use this package with the six-channel hub pin table. BLE device: **MeditationVest**.
+BLE name: **MeditationVest**. This firmware adds sensor-target exercises to the
+existing six-channel controls. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
@@ -11,118 +12,134 @@ Use this package with the six-channel hub pin table. BLE device: **MeditationVes
 | CH4 | D16 | D27 | VN / GPIO39 |
 | CH5 | D13 | D14 | D33 |
 
-All sensors use 3.3 V and a separate ADC1 input. Every hub connector uses
-**P4 pump / P5 valve**, with P6 unused. Firmware v6 and v7 use CH1's revised actuator
-GPIO assignment: **pump D23, valve D22**. Other channel pins are unchanged.
+All sensors use 3.3 V and separate ADC1 inputs. Every hub connector uses P4 pump,
+P5 valve, P6 unused, P7 analog OUT and P8 3V3. The opposite module connector uses
+J1 P5 pump and P4 valve. The user has reported successful hub tests with the same
+module/cable on each port. This update does not require rewiring.
 
-## CH1 wiring and firmware must agree
+## Install
 
-- Keep the original hub conductors: **D23 / C16 → P4 / A15 pump** and
-  **D22 / C15 → P5 / A14 valve**. If you applied the preceding hub-swap proposal,
-  restore these endpoints with all power disconnected.
-- On the previously working CH1 module, check **L3 / J1 P5 → actual pump-driver
-  input**, **M3 / J1 P4 → actual valve-driver input**. If opposite, exchange only
-  the M3/L3 command-wire ends; if already correct, do not swap again.
-- Keep driver ends, power wiring and the working pump in V1 / valve in P1.
-  Standard modules already use J1 P5 for pump and P4 for valve.
-- Upload **v7** yourself with battery physically disconnected and JP5 open.
-  v5 assigns CH1 D22/D23 oppositely. Verify the complete signal paths and v7
-  output timing with actuator power disconnected before a powered test.
+Disconnect the actuator battery physically and keep JP5 open. Upload this sketch
+using the classic ESP32 target (`esp32:esp32:esp32`). The user uploads; this release
+has not been flashed or physically actuated by the assistant. Reconnect in Bluefy
+after upload. The new exercises require v8; earlier firmware keeps its supported
+manual/pattern controls.
 
-This update changes no sensor pin, cycle timing, repeat/link behavior or BLE name.
-Module correction and hardware verification are not recorded as completed.
+## Four app screens
 
-Module printed coordinates are A–X on the solder side; hub coordinates remain
-A–X on the component side, USB up.
+- **Exercises:** choose Breathing or Body scan, then Start. No settings to edit.
+- **Zones:** independent Front / Back view; select a visual zone and assign one
+  or two channels. Back zones have distinct assignments. Record sensor references.
+- **Sequences:** choose which sequence to configure, select its zone, and edit
+  target, pump limit, hold, released interval and zone duration. Choose a round
+  count or Until Stop, optional lower back, preparation delay and spoken guidance.
+- **Device:** connection options, firmware download, and existing channel tests,
+  individual switches, linked patterns, voltage/ADC readings and charts.
 
-## Upload and verify
+Changing the Zones view or the sequence being edited does not change the exercise
+selected on Exercises. Settings are saved locally in the browser.
 
-1. Physically disconnect the actuator battery and leave JP5 open.
-2. Check every signal lead against the six-channel hub manual, including unused
-   P6 contacts. Remove any GPIO connections that conflict with this map.
-3. Upload this sketch yourself to the classic ESP32. It compiles for
-   `esp32:esp32:esp32`; no assistant upload or actuation has occurred.
-4. Open the HTTPS control page in Bluefy, connect to MeditationVest, and compare
-   each sensor voltage with a meter. The app supports all six independent inputs.
-5. Keep actuator power disconnected for output checks. Run one channel with
-   2 seconds pump and 10 seconds hold: its pump GPIO should be high only while
-   pumping, its valve through pumping and hold, both low after release.
-   Explicitly verify D16/D17 on the received board; their labels are reported,
-   but the ESP-32 shield marking does not establish whether they are internally
-   reserved. If they fail to switch or the board restarts, do not apply actuator
-   power. Resolve the module's pin availability first.
-6. Verify local 6 V supplies and test one unworn, vented module at a time.
-   Six-channel controls do not establish six-pump battery, fuse or wire capacity.
+## Percentage targets
 
-## Channel tests
+For each sensor channel, record **0% with its airbag fully vented**, then inflate
+and hold a chosen reference level using the Device test controls and record
+**100%**. Reference capture stays available during a manual test or hold, but is
+locked during an exercise. Recording a new zero clears that channel's old 100%.
+Reference points must be inside ADC endpoints and at least 32 counts apart.
 
-The default **Test channels** view tests one channel at a time. Each channel has
-its own analog voltage, ADC percentage and graph beside its controls (below on
-narrow phones).
+These percentages mean a relative sensor reading, not percentage of air volume,
+calibrated pressure, or a safe pressure limit. Recalibrate after moving/replacing
+a sensor or materially changing its installation. Calibration is saved for the
+selected BLE device in this browser. Preview calibration is separate and never
+saved as real hardware calibration. Targets start blank for the user to choose.
 
-- **Test pump + valve**: select the valve for 100 ms, run the pump for the selected
-  time, hold for the selected delay, then turn both off. No repeat or fixed cooldown.
-- **Pump switch**: independent ON/OFF, automatically OFF after 2 seconds.
-- **Valve switch**: independent ON/OFF, automatically OFF after 10 seconds.
-- A switch affects only its named output. It does not restart an expired output
-  or extend the other output's timer. Readouts report ESP32-commanded states;
-  physical pump/valve feedback is not measured.
-- Only one test channel can be active. Firmware rejects tests during a pattern,
-  other-channel starts during a test, and manual switches during a combined cycle.
-- Stop & release and BLE disconnection end test outputs. Reconnect never resumes.
+The target is `zero + (reference - zero) × targetPercent / 100`, rounded to an ADC
+count. Paired channels use their own reference points. Both valves select, then
+each pump stops independently when its own averaged raw reading reaches its
+target. Both enter the configured hold after the last pump stops, and release
+together. Pumps do not top up during hold if the reading falls.
 
-Use **Patterns & links** for the existing independent/linked repeat controls.
-Earlier firmware remains usable there, but channel tests require v7. GPIOs remain
-exactly as in v6: CH1 pump D23, valve D22; sensor D34.
+Each pulse has a 100 ms valve lead, maximum pump time 0.05–2 s, hold 0–10 s and
+released interval 0.5–10 s. If any target is not reached within the pump limit,
+the whole exercise releases and stops, identifying the affected channel. Missing,
+stale (500 ms), or ADC-endpoint samples likewise stop sensor-target inflation/hold.
+A floating analog input can still look plausible: this is not reliable sensor-
+presence detection. Four-sample averaging introduces response delay; physical
+overshoot and actual pressure response have not been validated by software tests.
 
-## Pattern controls
+**Timed inflation** is an explicit per-zone alternative. It ignores sensor
+feedback, pumps for the configured time, then holds and releases.
 
-- Pump 0.05–2 seconds; hold and release interval 0–10 seconds.
-- Valve lead 100 ms. Pump stops before hold; valve releases after hold.
-- One cycle, 1–999 total cycles, or repeat until Stop.
-- No fixed delay after the final release. A zero repeat interval does not
-  establish physical deflation between cycles.
-- Link any two channels with one shared timing command. Unlink restores each
-  channel's saved timings. Independent channels have separate state.
-- Finite patterns finish after BLE disconnection. Continuous patterns finish
-  their current cycle and release; reconnect never starts a pattern.
-- Stop & release, or serial `x`, turns all outputs off when received.
+## Exercise sequencing
 
-## Sensor display
+Breathing uses front zone D as a cue for natural breathing awareness, not fixed
+inhale/exhale pacing. Body scan uses upper → middle → optional lower back.
+Default back durations are 30 s per zone, with 30 s preparation; front defaults
+to 5 s preparation and a 30 s window. These are editable testing defaults.
 
-All six ADC1 pins use 12-bit acquisition and ADC_11db attenuation. Four raw/
-millivolt sample pairs are averaged; Arduino performs separate conversions for
-these APIs. Output is volts, a 30-second chart, ADC range percentage and limit
-indicators. It is not calibrated pressure or inflation. A floating input can
-still produce a reading. Sensor data is display-only; no pressure cutoff.
+Within each zone, inflate → hold → release repeats. A new pulse starts only if its
+complete worst-case duration fits in the remaining zone window. Any final remainder
+stays released. At most two channels are assigned to one zone; one zone operates
+at a time. These limits do not establish battery/wire current capacity.
 
-The control task owns GPIO and runs separately from BLE and sensor acquisition.
-Three notifications are sent per 50 ms: summary, one channel detail, one analog
-packet. Each channel refreshes nominally every 300 ms; physical BLE performance
-and six-channel hardware timing remain to be checked. Stale values are blanked.
+The ESP32 owns the sequence and feedback decisions; BLE/UI timing does not control
+pump shutdown. Stop, serial `x`, and Bluetooth disconnect end exercises immediately
+when handled. No exercise resumes automatically. Delayed controller ticks never
+replay missed zones or bursts. Settings commit atomically after every zone has
+been validated, and expire if incomplete. Tests/patterns cannot start while an
+exercise is settling or released between pulses.
 
-## Protocol
+## Channel tests and legacy patterns
 
-Service `8d5a0001-4c7b-4f45-9d68-8e0c2c970001`; command/status/info use 0002,
-0003/0004 respectively. Protocol version 2, firmware revision 7, enabled mask63,
-analog mask63, sensor selector255. Fixed 20-byte summary/detail/analog packets
-retain channel identity and session nonce. Commands are 18 bytes, sequenced,
-serialized and session-checked. Stop bypasses the normal command queue.
+Device contains the previous controls, with sensor readings beside each channel.
+Manual pump ON expires at 2 s and valve ON at 10 s. Changing one switch does not
+renew the other's timer. One test channel at a time; combined tests run one cycle.
+States describe commanded outputs, not measured actuator feedback.
 
-Firmware v7 advertises flags63. Opcodes: 1 pattern, 2 stop, 3 manual output,
-4 exclusive test cycle. Opcode3 uses the pump/hold fields as 0=OFF, 1=ON,
-2=unchanged, with release/repeats=0; the mask must contain one enabled channel.
-Opcode4 uses ordinary pump/hold durations, release0/repeats1, one channel.
-All non-stop commands retain session, sequence and 250 ms receive-expiry checks.
-Phase5 is manual testing. In v7 control summaries, the previously unused raw
-field holds 12 output bits (pump then valve for each channel); flags0 and age65535.
-This lets one summary atomically acknowledge a command and report all output
-states. Analog values continue in separate channel-labelled 0x20 packets.
+Legacy patterns retain independent/paired operation, 1–999 cycles or Until Stop,
+pump 0.05–2 s, hold/release 0–10 s, and no cooldown after the final release.
+Finite patterns finish after BLE disconnect; continuous patterns finish their
+current cycle then release. Tests stop on disconnect. Reconnection never sends
+an actuator command. Sensors remain display-only for these legacy controls.
 
-## Checks
+## Connection and audio
 
-`clang++ -std=c++17 -Wall -Wextra -pedantic firmware/tests/hub_ble_test.cpp -o /tmp/hub-ble-test`
-then `/tmp/hub-ble-test`; compile with Arduino-ESP32 core3.2.1.
-Software checks do not establish physical pin, pressure or power validation.
+First connection requires choosing the device. Automatic reconnection reuses only
+the exact previously permitted device ID. Restoration across page reloads depends
+on browser support for getDevices; same-page reconnect can reuse its device object.
+There is no unrestricted proximity scan or selection by name alone. Explicit
+Disconnect, Preview mode, disabled reconnect, and hidden pages suppress retries.
+The Connect button remains the fallback for Bluefy. Fresh session validation runs
+on each connection and no command or exercise is replayed.
 
-[Espressif GPIO reference](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html)
+Optional narration uses prepared **ElevenLabs Multilingual v2** clips (Sarah/Lily)
+generated once through OpenRouter, with a device-voice fallback and speed selector.
+The public app contains audio files, not API credentials or live TTS requests.
+Voice prompts run once per zone/round, not every inflation. Stop, disconnect and
+page hiding cancel audio, including clips still loading. Background/Bluefy audio
+behavior remains device-dependent; text guidance stays visible. Short configured
+windows may interrupt a longer prompt at the next zone. Voice quality is subjective.
+
+## Firmware protocol and checks
+
+Protocol2, firmware8, flags127, enabled/analog mask63, sensor selector255.
+18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
+receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
+New staged commands: op5 = zone timing (aux index, mask channels, pump max, hold,
+release gap, repeats field = zone window); op7 = target counts (pump/hold fields =
+first/second channel in ascending order, 0/0 timed mode); op6 = commit (aux kind1/2,
+mask stage count, pump field preparation, repeats round count, zero means forever).
+Invalid/incomplete configuration never starts outputs. Stop invalidates staging.
+
+Summary byte19 is active exercise kind1/2, 0 idle, or fault marker
+`0x80 | (fault << 3) | channel` (fault1 sensor invalid, fault2 target timeout).
+0x30 packets contain kind/phase/step/count, session, round/repeats, phase remaining,
+16-bit zone elapsed and 16-bit pulse count. Phases1–6: preparation, valve lead,
+inflate, hold, release gap, released remainder. Analog data stays in 0x20 packets.
+Three notifications per 50 ms: summary, alternating exercise/detail, analog.
+Nominal refresh: exercise100ms, analog channel300ms, debug detail channel600ms.
+
+Native controller/protocol tests and Node model/transport/audio tests cover these
+behaviors. ESP32 core3.2.1 compile: 1,113,526 flash bytes /39,960 RAM bytes.
+Software/simulated checks do not establish physical pressure response or simultaneous
+paired-module performance. No assistant upload, BLE hardware connection or actuation.

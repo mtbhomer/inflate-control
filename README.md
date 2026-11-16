@@ -1,33 +1,36 @@
-# MeditationVest control · v7
+# MeditationVest control · v8
 
-Mobile Web Bluetooth UI for six independent pump/valve channels and six analog
-sensors. Open the HTTPS GitHub Pages site in Bluefy and upload the matching
-`dist/hub_ble.zip` yourself. See the firmware README for the exact GPIO table.
+[Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
+Download the matching firmware from Device and upload it yourself with actuator
+battery disconnected and JP5 open. GPIOs are unchanged from the working v7 hub.
 
-The default Test channels mode offers one combined cycle and independent pump/valve switches, one channel at a time. Pump switches expire after 2 seconds, valves after 10 seconds; Stop and disconnection turn test outputs off. Patterns & links preserves repeat controls.
+Four bottom tabs separate Exercises, Zones, Sequences and Device. Exercises is a
+simple choose-and-start view. Zones has independent Front/Back mapping and sensor
+reference capture. Sequences holds targets, timings, repeats and voice options.
+Device contains connection settings and the original per-channel debugging tools.
 
-Each channel shows voltage, ADC-range percentage and a collapsible graph, plus
-pump/hold times. Link any two boards; run once, set a repeat count, or repeat
-until Stop. No fixed cooldown follows the last release. Sensor data is display
-only. Firmware capability flags still determine which controls are enabled.
-The page has a clearly marked preview that sends no Bluetooth commands.
+Exercises can inflate to per-channel calibrated sensor percentages or use timed
+inflation. Each zone repeats inflate/hold/release cues for its configured duration;
+body scan progresses upper/middle/optional lower back. The ESP32 executes timing
+and feedback. See [firmware details](firmware/hub_ble/README.md) for limits,
+calibration semantics, sensor faults, GPIOs and protocol.
 
-The hardware plan uses CH1 D23 pump / D22 valve and preserves CH2 GPIOs, uses six distinct ADC1 pins,
-and requires USB-only verification of the D16/D17 headers before actuator power.
-Six-pump current capacity, pressure calibration and physical six-channel timing
-remain unverified. No assistant upload or hardware actuation is performed.
+Narration is optional: prepared ElevenLabs Multilingual v2 clips, Sarah and Lily,
+with device-voice fallback. All 16 clips are static MP3 files with scripts/hashes
+in dist/audio/manifest.json. Generated once using the owner's authorized OpenRouter
+account; no credential, source deck or live generation request is published.
 
-## Checks
+Automatic reconnect only reuses a previously selected device; new permission still
+requires Connect. Browser support controls restoration after page reload. The
+reconnect handler never replays a command. Preview sends no Bluetooth commands
+and keeps synthetic calibration separate from real device calibration.
 
-`node --test tests/protocol.test.mjs`
+Checks: `npm ci --ignore-scripts` then `node --test tests/*.test.mjs`; native `tests/hub_ble_test.cpp` and
+`tests/hub_routine_test.cpp`; `arduino-cli compile --fqbn esp32:esp32:esp32 firmware/hub_ble`.
+GitHub Pages publishes only dist/. Canonical firmware is copied by the private
+workspace's package script. Software checks are not a powered vest test.
 
-`clang++ -std=c++17 -Wall -Wextra -pedantic tests/hub_ble_test.cpp -o /tmp/hub-ble-test`
-
-`arduino-cli compile --fqbn esp32:esp32:esp32 firmware/hub_ble`
-
-Serve this directory locally to use `preview.html` (393 CSS px phone frame).
-GitHub Pages Actions publishes only dist/. Canonical firmware lives in the
-private research workspace; its package script copies only the intended source,
-tests and firmware download into this public repository.
-
-[Espressif GPIO reference](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html)
+References: [Web Bluetooth permissions](https://developer.mozilla.org/en-US/docs/Web/API/Bluetooth/getDevices),
+[Bluefy connection guide](https://bluefy.app/guide.html),
+[OpenRouter TTS](https://openrouter.ai/docs/guides/overview/multimodal/tts),
+[ElevenLabs Multilingual v2](https://openrouter.ai/elevenlabs/eleven-multilingual-v2).

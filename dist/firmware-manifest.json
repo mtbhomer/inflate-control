@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v7",
+  "firmware": "MEDITATION VEST BLE v8",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -43,7 +43,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 7,
+  "firmwareRevision": 8,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -93,7 +93,7 @@
     16,
     17
   ],
-  "boardPinCheck": "Verify D16/D17 at the headers with actuator battery physically disconnected before power testing",
+  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v8 physical test",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -103,7 +103,17 @@
     "fixedCooldown": 0,
     "maxRepeatCount": 999
   },
-  "sensorDisplayOnly": true,
+  "sensorDisplayOnly": false,
+  "routineSensorControl": {
+    "perChannelCalibratedPercent": true,
+    "maxPumpMs": 2000,
+    "invalidSensorStops": true,
+    "targetTimeoutStops": true,
+    "repeatedCuesWithinZone": true,
+    "maxChannelsPerZone": 2,
+    "targetsInitiallyBlank": true,
+    "timedFallback": true
+  },
   "channelTest": {
     "oneChannelAtATime": true,
     "manualPumpMaxMs": 2000,
@@ -111,9 +121,11 @@
     "otherSwitchDoesNotExtendTimer": true,
     "statesAreCommandedNotMeasured": true
   },
-  "disconnectBehavior": "test outputs turn off; finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
+  "disconnectBehavior": "routines and test outputs turn off; finite patterns finish; continuous patterns finish current cycle then release; no automatic restart",
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
+  "previousHubPortTestsUserReportedWorking": true,
+  "v8HardwareTested": false,
   "analogSensors": {
     "channels": [
       0,
@@ -137,16 +149,16 @@
     "averageSamples": 4,
     "samplePeriodMs": 20,
     "nominalChannelNotificationPeriodMs": 300,
-    "display": "volts and ADC range; no pressure calibration",
+    "display": "relative calibrated percentage for routines; volts and ADC range in Device; no pressure calibration",
     "sensorPresenceDetection": false
   },
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
-    "BleProtocol.h": "357babcd4426aa949f70b5d175d35c137cfe4aea691ad9b952190eacc372e692",
-    "HubController.h": "ddeaa807112c1220af682b12994b4fd8a7f9a1d5223ed4b3b0aa997d9d29c4c4",
+    "BleProtocol.h": "de480629063cfd3ca5b2eb72a0ee5fbcd860c533991763a38f0e4b22b4628d39",
+    "HubController.h": "8cb89e2d477a860ad2f98bba47229a7f65deedbbe2391d0765aacc9d218b5764",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
-    "README.md": "4b8c57b5267432e98ff447b55742d5f242f49436dd553b3c49eabd66d61d0da9",
-    "hub_ble.ino": "e49cf02c339d694253ead0eca295e72041e25c189def6009dcc079f00a193996"
+    "README.md": "0737f767596e070428f4ba2f45d3322a8fcfee4ef6079b91f3c6b2505ed6a7b0",
+    "hub_ble.ino": "5f055465ca752c98176720a8c1d25621a8d347c77e1f09878af47b0dd08d2565"
   }
 }
