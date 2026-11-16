@@ -40,7 +40,8 @@ export class RoutineUI{
   for(const id of ['zone-mode','target-field'])seqEditor.append(id==='zone-mode'?$(id).parentElement:$(id));
   seqEditor.append(document.querySelector('.routine-timing-grid'),$('zone-timing-note'));
   const session=document.querySelector('.routine-session'),summary=$('routine-zone-summary'),validation=$('routine-validation'),upgrade=$('routine-upgrade'),startButton=$('routine-start');
-  $('sequences').append(session);$('routines').append(summary,validation,upgrade,startButton);
+  $('sequences').append(session);$('routines').append(summary,validation,upgrade);
+  const actions=document.createElement('div');actions.className='routine-actions';actions.append(startButton);actions.insertAdjacentHTML('beforeend','<button class="stop-control" data-stop disabled><span class="stop-icon" aria-hidden="true"></span>Stop & release</button>');$('routines').append(actions);
 
   for(const button of document.querySelectorAll('[data-config-kind]'))button.addEventListener('click',()=>{if(this.locked())return;this.editKind=button.dataset.configKind;this.editZone=this.editKind==='scan'?'upper':'front';this.fill();this.changed();});
   $('sequence-zone-picker').addEventListener('click',e=>{const b=e.target.closest('[data-config-zone]');if(!b||this.locked())return;this.editZone=b.dataset.configZone;this.fill();this.changed();});
@@ -116,6 +117,7 @@ export class RoutineUI{
  }
  render(){
   const c=this.context(),running=c.fresh&&c.routineKind>0,live=running&&c.routineFresh?c.routine:null,locked=this.locked();
+  document.querySelector('.routine-live').hidden=!c.routineKind;
   if(live)this.data.selected=live.routineKind===1?'breathing':'scan';
   const activeIds=this.mapKind==='breathing'?['front']:['upper','middle','lower'],z=this.cfg.zones[this.zone],editIds=zoneIds(this.editKind,this.editCfg),editZ=this.editCfg.zones[this.editZone];
   const runCfg=this.runCfg,runIds=zoneIds(this.data.selected,runCfg),liveZone=live?zoneIds(this.data.selected,{lower:live.count===3})[live.step]:runIds[0];
@@ -153,7 +155,7 @@ export class RoutineUI{
   $('routine-start').disabled=Boolean(error)||!c.fresh||!c.info?.routines||locked;
   text('routine-start',c.pending?'Sending routine…':running?'Routine running':this.data.selected==='breathing'?'Start breathing →':'Start body scan →');
   const phase=live?.phase??0;let cue=live?(phase===1?'Settle into a comfortable position. Notice your natural breathing.':live.routineKind===1&&phase>=5?'After release, continue noticing your body and natural breathing.':ZONES[liveZone].cue):running?'Waiting for the routine’s current phase…':ZONES[liveZone].cue;
-  text('routine-live-label',live?`Round ${live.cycle}${live.repeats?' of '+live.repeats:' · until Stop'} · ${phase===1?'Preparation':ZONES[liveZone].name+' · cue '+live.pulse}`:running?'Routine active':'Your selected zone');
+  text('routine-live-label',live?`Round ${live.cycle}${live.repeats?' of '+live.repeats:' · until Stop'} · ${phase===1?'Preparation':ZONES[liveZone].name+' · cue '+live.pulse}`:c.routineKind?'Waiting for current progress':'Ready');
   const remaining=live?Math.max(0,live.remaining-(c.now-live.received)):0;text('routine-live-phase',live?`${phase===3&&runCfg.zones[liveZone].mode==='timed'?'Inflating':ROUTINE_PHASES[phase]} · ${Math.ceil(remaining/1000)} s`:running?'Syncing…':ZONES[liveZone].name);text('routine-cue',cue);
   const duration=phase===1?runCfg.settle:runCfg.zones[liveZone].window;$('routine-progress-fill').style.width=live?Math.min(100,Math.max(0,(live.elapsed+c.now-live.received)/Math.max(1,duration)*100))+'%':'0%';
   if(this.armed&&live){const speechPhase=phase===1?'settle':'zone',key=`${live.cycle}:${live.step}:${speechPhase}`;if(key!==this.lastCue){this.lastCue=key;this.speak(phase===1?'settle':liveZone);}this.wasActive=true;}

@@ -8,6 +8,9 @@ Four bottom tabs separate Exercises, Zones, Sequences and Device. Exercises is a
 simple choose-and-start view. Zones has independent Front/Back mapping and sensor
 reference capture. Sequences holds targets, timings, repeats and voice options.
 Device contains connection settings and the original per-channel debugging tools.
+Stop controls sit beside the exercise Start button and within Device controls;
+only navigation stays fixed at the bottom. The progress panel appears during an
+exercise, with no redundant selected-zone panel while idle.
 
 Exercises can inflate to per-channel calibrated sensor percentages or use timed
 inflation. Each zone repeats inflate/hold/release cues for its configured duration;
