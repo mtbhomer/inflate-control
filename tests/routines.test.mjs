@@ -33,6 +33,6 @@ test('target packets and fault markers reject malformed values',()=>{
 test('preview repeats cues within a zone and independently stops paired pumps',()=>{
  const d=mapped(),z=d.breathing.zones.front;Object.assign(z,{mask:3,mode:'sensor',target:50,pump:1000,hold:200,release:500,window:5000});d.breathing.settle=0;
  const p=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{maximum:100},{maximum:100}]),0);
- p.tick(100);assert.equal(p.tick(500).runs[0].phase,3);assert.equal(p.tick(500).runs[1].phase,2);assert.equal(p.tick(560).routine.phase,4);assert.equal(p.tick(760).routine.phase,5);assert.equal(p.tick(1260).routine.pulse,2);assert.equal(p.tick(5000).complete,true);
- z.pump=100;const q=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{maximum:100},{maximum:100}]),0);q.tick(100);assert.equal(q.tick(200).fault,2);assert.equal(q.tick(200).routine.routineKind,0);
+ p.tick(100);assert.equal(p.tick(500).runs[0].phase,3);assert.equal(p.tick(500).runs[1].phase,2);assert.equal(p.tick(560).routine.phase,4);assert.equal(p.tick(760).routine.phase,5);assert.equal(p.tick(1260).routine.pulse,2);assert.equal(p.tick(5000).routine.phase,5);assert.equal(p.tick(5500).complete,true);
+ z.pump=100;const q=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{maximum:100},{maximum:100}]),0);q.tick(100);assert.equal(q.tick(200).fault,0);assert.equal(q.tick(200).routine.routineKind,1);assert.equal(q.tick(200).runs[0].phase,2);
 });

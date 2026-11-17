@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=12';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=13';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -28,7 +28,7 @@ export class HubBLE extends EventTarget{
  }
 
  status(value){try{
-  const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
+  const s=decodeStatus(value,this.info);if(!this.info||s.session!==this.info.session)return;
   if(s.kind==='pwm'){if(!this.info.pwmTests)throw Error('Unexpected PWM report; reconnect.');if(this.info.mask&(1<<s.channel))this.emit('pwm',s);return;}
   if(s.kind==='routine'){if(!this.info.routines)throw Error('Unexpected routine status; reconnect.');this.emit('routine',s);return;}
   if(s.kind==='analog'){if(this.info.channelSelection&&!(this.info.mask&(1<<s.channel)))return;if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
@@ -73,6 +73,7 @@ export class HubBLE extends EventTarget{
 
  }
  async startRoutine(plan){
+  if(plan.stages.some(s=>s.pump===0||s.pump>2000)&&!this.info?.targetOnlyRoutines)throw Error('Install firmware v13 to run sequences without the 2-second cutoff.');
   if(plan.stages.some(s=>(s.speed??100)!==100)&&!this.info?.routineSpeed)throw Error('Install firmware v12 to use sequence pump speed.');
   if(plan.targetUnit==='millivolts'&&!this.info?.sensorRangeTargets&&plan.stages.some(s=>s.targets.some(Boolean)))throw Error('Install firmware v10 for sensor-range targets.');
   const generation=this.generation,cancel=this.cancelStartsThrough||0;

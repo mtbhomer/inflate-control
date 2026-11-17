@@ -1,4 +1,4 @@
-import {sensorPercent,validMaximum} from './sensor-profile.mjs?v=12';
+import {sensorPercent,validMaximum} from './sensor-profile.mjs?v=13';
 export const PWM_HZ=100;
 export const PWM_RESULTS={1:'Selecting valve',2:'Pumping',3:'Taking final reading',4:'Full run · released',5:'Maximum reached · shortened',6:'Sensor unavailable · released',7:'Stopped · released',8:'Disconnected · released'};
 export function pwmMeasurement(report){

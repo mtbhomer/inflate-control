@@ -57,7 +57,7 @@ int main(){
   assert(c.beginRoutine(1,1,0,1,0)==Reply::Invalid);
   assert(timed(c,1,1,50,0,1000,0)==Reply::Invalid);
   for(auto mask:{0,7,64})assert(timed(c,0,mask,50,0,1000,0)==Reply::Invalid);
-  assert(timed(c,0,1,2001,0,3000,0)==Reply::Invalid);
+  assert(timed(c,0,1,60001,0,3000,0)==Reply::Invalid);
   assert(timed(c,0,1,50,10001,30000,0)==Reply::Invalid);
   assert(timed(c,0,1,50,0,649,0)==Reply::Invalid);
   assert(timed(c,0,1,50,0,60001,0)==Reply::Invalid);

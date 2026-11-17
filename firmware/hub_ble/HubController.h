@@ -28,7 +28,7 @@ struct PwmTrial {
 };
 class HubController {
  public:
-  static constexpr uint16_t MIN_PUMP=50,MAX_PUMP=2000,MAX_HOLD=10000,MAX_RELEASE=10000,MAX_REPEATS=999,LEAD=100;
+  static constexpr uint16_t MIN_PUMP=50,MAX_PUMP=2000,MAX_ROUTINE_PUMP=60000,MAX_HOLD=10000,MAX_RELEASE=10000,MAX_REPEATS=999,LEAD=100;
   explicit HubController(uint8_t mask):available(mask),enabled(mask){}
   uint8_t enabledMask()const{return enabled;}
   Reply setEnabledChannels(uint8_t mask,uint32_t now){
@@ -137,7 +137,7 @@ class HubController {
     update(now);
     if(activeMask()||routine.active){stagedCount=0;return Reply::Busy;}
     unsigned members=0;for(uint8_t bit=mask;bit;bit>>=1)members+=bit&1;
-    if(index>2||!mask||mask>63||members>2||pump<MIN_PUMP||pump>MAX_PUMP||hold>MAX_HOLD||release<500||release>10000||window>60000||window<uint32_t(LEAD)+pump+hold+release){stagedCount=0;return Reply::Invalid;}
+    if(index>2||!mask||mask>63||members>2||(pump&&pump<MIN_PUMP)||pump>MAX_ROUTINE_PUMP||hold>MAX_HOLD||release<500||release>10000||window>60000||window<uint32_t(LEAD)+(pump?pump:MIN_PUMP)+hold+release){stagedCount=0;return Reply::Invalid;}
     if(mask&~enabled){stagedCount=0;return Reply::Disabled;}
     if(index==0)stagedCount=0;
     if(index!=stagedCount||(index&&(now-stagedAt>5000||!staged[index-1].ready))){stagedCount=0;return Reply::Invalid;}
@@ -150,7 +150,7 @@ class HubController {
     if(activeMask()||routine.active){stagedCount=0;return Reply::Busy;}
     if(index>=stagedCount||index+1!=stagedCount||now-stagedAt>5000||mask!=staged[index].mask||first>2700||second>2700||(first&&first<=200)||(second&&second<=200)){stagedCount=0;return Reply::Invalid;}
     auto&s=staged[index];unsigned n=0;for(unsigned ch=0;ch<6;++ch)if(mask&(1<<ch))s.targets[ch]=n++==0?first:second;
-    if((n==1&&second)||(n==2&&bool(first)!=bool(second))){stagedCount=0;return Reply::Invalid;}
+    if((!s.pumpMs&&!first)||(n==1&&second)||(n==2&&bool(first)!=bool(second))){stagedCount=0;return Reply::Invalid;}
     s.ready=true;stagedAt=now;return Reply::Accepted;
   }
   Reply configureSpeed(uint8_t index,uint8_t mask,uint16_t duty,uint32_t now){
@@ -177,6 +177,7 @@ class HubController {
   uint16_t routineRemaining(uint32_t now)const{
     if(!routine.active)return 0;
     const auto&s=routine.stages[routine.step];const auto phase=routine.phase;
+    if(phase==3&&!s.pumpMs){const uint32_t elapsed=now-routine.stepStarted,end=s.windowMs-s.releaseMs;return elapsed<end?end-elapsed:0;}
     const uint32_t duration=phase==1?routine.settleMs:phase==2?LEAD:phase==3?s.pumpMs:phase==4?s.holdMs:phase==5?s.releaseMs:s.windowMs;
     const uint32_t elapsed=now-(phase==6?routine.stepStarted:routine.phaseStarted);return elapsed<duration?duration-elapsed:0;
   }
@@ -255,6 +256,12 @@ class HubController {
     if(!routine.active)return;
     if(routine.settling){if(now-routine.stepStarted>=routine.settleMs)startRoutineStage(now);return;}
     auto&s=routine.stages[routine.step];
+    // Target-only pumping has no per-burst timeout. Reserve release time at the
+    // zone boundary, even when a target was not reached or a loop tick was late.
+    if(!s.pumpMs&&now-routine.stepStarted>=uint32_t(s.windowMs-s.releaseMs)&&routine.phase>=2&&routine.phase<=4){
+      routine.pumpMask=0;setRoutinePhase(5,now);renderRoutineOutputs();return;
+    }
+    if(!s.pumpMs&&routine.phase==5&&now-routine.phaseStarted<s.releaseMs)return;
     if(now-routine.stepStarted>=s.windowMs){
       clearOutputs();
       if(++routine.step>=routine.count){
@@ -272,14 +279,14 @@ class HubController {
     }else if(routine.phase==3){
       for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].millivolts>=s.targets[ch])routine.pumpMask&=~(1<<ch);
       if(!routine.pumpMask)setRoutinePhase(4,now);
-      else if(elapsed>=s.pumpMs){
+      else if(s.pumpMs&&elapsed>=s.pumpMs){
         for(unsigned ch=0;ch<6;++ch)if((routine.pumpMask&(1<<ch))&&s.targets[ch]){abortRoutine(2,ch);return;}
         routine.pumpMask=0;setRoutinePhase(4,now);
       }
     }else if(routine.phase==4&&elapsed>=s.holdMs){routine.pumpMask=0;setRoutinePhase(5,now);}
     else if(routine.phase==5&&elapsed>=s.releaseMs){
       const uint32_t remaining=s.windowMs-(now-routine.stepStarted);
-      if(remaining>=uint32_t(LEAD)+s.pumpMs+s.holdMs+s.releaseMs)startPulse(now);
+      if(remaining>=uint32_t(LEAD)+(s.pumpMs?s.pumpMs:MIN_PUMP)+s.holdMs+s.releaseMs)startPulse(now);
       else setRoutinePhase(6,now); // Finish with a released observation interval.
     }
     if(routine.active)renderRoutineOutputs();

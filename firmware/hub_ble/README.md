@@ -1,7 +1,8 @@
-# MeditationVest BLE v12
+# MeditationVest BLE v13
 
-BLE name: **MeditationVest**. This firmware adds per-zone pump speed to breathing and body-scan sequences,
-using the existing 100 Hz PWM output driver. The working GPIO map is unchanged.
+BLE name: **MeditationVest**. Sensor-target sequences now pump until their target, without the old 2-second
+cutoff. Timed sequences accept longer durations that fit their zone. Per-zone
+speed uses the existing 100 Hz PWM output driver. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
@@ -24,8 +25,8 @@ using the classic ESP32 target (`esp32:esp32:esp32`). The user uploads; this rel
 has not been flashed or physically actuated by the assistant. Reconnect in Bluefy
 after upload. Channel selection requires v9; sensor-range targets and calibration bursts
 require v10. Timed exercises require v8 or newer; sequence speed requires v12.
-Earlier firmware keeps its supported controls. The current download is v12;
-`hub_ble-v11.zip` retains the previous release.
+Earlier firmware keeps its supported controls. Target-only sequences and longer timed sequences require v13.
+The current download is v13; `hub_ble-v12.zip` retains the previous release.
 
 ## Enabled channels
 
@@ -58,7 +59,8 @@ assignment was edited while the channel was disabled.
 - **Zones:** independent Front / Back view; select a visual zone and assign one
   or two channels. Back zones have distinct assignments. View live sensor percentages.
 - **Sequences:** choose which sequence to configure, select its zone, and edit
-  target, pump speed, pump limit, hold, released interval and zone duration. Choose a round
+  target, pump speed, hold, released interval and zone duration; timed mode also
+  has a pump duration. Choose a round
   count or Until Stop, optional lower back, preparation delay and spoken guidance.
 - **Device:** connection options, enabled channels, firmware download, and channel tests,
   individual switches, linked patterns, sensor setup, voltage/ADC readings and charts.
@@ -101,8 +103,8 @@ releases normally. No top-up occurs during hold. An exercise normally ends when
 its configured zone duration and round count finish; the completion voice reflects
 that. Round count and per-round duration appear before Start when ready.
 
-Missing/stale (500 ms) samples, actual ADC endpoints and target timeout still stop
-and release sensor-target exercises. A floating analog input can look plausible;
+Missing/stale (500 ms) samples and actual ADC endpoints still stop and release
+sensor-target exercises. The target-only mode has no separate pump timeout. A floating analog input can look plausible;
 this is not reliable sensor-presence detection. Four-sample averaging introduces
 response delay. Physical overshoot has not been validated by software tests.
 
@@ -142,24 +144,40 @@ channels assigned to a zone use that zone's speed. In sensor mode, each pump sti
 stops independently at its own target; both valves hold and release together.
 In timed mode, pumping lasts for the configured time at the chosen duty.
 
-Lower duty may require more time to reach the same target. The existing pump limit
-remains at most 2 s; it is not automatically extended. If a sensor target is not
-reached within the selected limit, the routine stops and releases as before.
-Adjust target and pump limit in Sequences after checking the actual bag response.
-Preview demonstrates slower inflation and timeout behavior with synthetic feedback;
-it is not a fitted model of the CH0 measurements or a prediction for another pump.
+### Target-driven duration (v13)
+
+Sensor mode hides the former Pump limit field. Pumping continues at the selected
+speed until each sensor reaches its target, even when that takes more than 2 s.
+The old saved timeout is ignored; mappings, targets, speeds and other timing
+settings are retained. Hold starts when both assigned pumps have reached target.
+
+The zone duration still controls the sequence. Its final configured release
+interval is reserved for venting: an unfinished inflation or hold ends there and
+releases, without a target-timeout fault. The last cue can therefore be shorter.
+The next zone or round follows normally. A delayed control tick releases for the
+full configured interval before advancing, so the real duration may then extend.
+Stop, Bluetooth disconnect and invalid/stale sensor feedback still release.
+
+Timed mode exposes Pump time and accepts longer durations that fit a complete
+pump, hold and release cycle inside the zone, including the 0.1 s valve lead.
+Zones retain their existing 1–60 s range. Debug channel controls and manual
+switches retain their separate 2 s behavior; this change applies to sequences.
+
+Preview demonstrates these transitions using synthetic feedback; it is not a
+fitted model of the CH0 measurements or a prediction for another pump.
 
 Speed is stored with the sequence in this browser and sent transactionally before
 each Start. Every enabled zone's speed must be acknowledged before the app commits
-the exercise. Old firmware can still run 100% sequences; reduced-speed sequences
-are blocked until firmware v12 is installed, with no silent full-power fallback.
+the exercise. Old firmware retains its compatible timed sequences. Reduced speed needs v12;
+target-only pumping or timed pumping beyond 2 s needs v13. Unsupported plans are
+blocked before any configuration is sent, with no fallback to old timing or duty.
 Manual switches, calibration increments, timed channel tests and debug patterns
 continue at 100%. The separate PWM bench test keeps its own chosen test duty.
 Valve outputs, GPIO mapping, channel selection and sensor targets are unchanged.
 The output driver remains 100 Hz / 10 bit with no startup boost. User-reported v11 CH0
 bench trials demonstrated slower pressure rise at lower duty and smooth starts at
 25%; this is not a guarantee for every motor or simultaneous paired operation.
-No v12 routine has been physically actuated by the assistant.
+No v13 routine has been physically actuated by the assistant.
 
 ## PWM comparison test (v11 and later)
 
@@ -206,7 +224,7 @@ latches pump outputs off (detach and GPIO LOW) and releases valves; new actuatio
 requires a hub restart. There is no fallback to full power on an error. PWM duty is
 not a measured pump speed. Hardware waveform, driver heating and diode performance remain unverified.
 The user reported smooth starts at 25% on one CH0 module in v11 trials; usable
-frequency/duty ranges across all motors and v12 routines are not established.
+frequency/duty ranges across all motors and v13 routines are not established.
 
 Implementation reference: [Espressif Arduino LEDC API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/ledc.html).
 Core 3.2.1's local implementation was checked for full-on behavior; seller claims
@@ -267,11 +285,21 @@ windows may interrupt a longer prompt at the next zone. Voice quality is subject
 Protocol2, firmware12, flags255, enabled/analog mask0–63, sensor selector255.
 18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
 receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
-New staged commands: op5 = zone timing (aux index, mask channels, pump max, hold,
+New staged commands: op5 = zone timing (aux index, mask channels, pump duration, hold,
 release gap, repeats field = zone window); op7 = target millivolts (pump/hold fields =
 first/second channel in ascending order, 201–2700 mV, 0/0 timed mode); op6 = commit (aux kind1/2,
 mask stage count, pump field preparation, repeats round count, zero means forever).
 Invalid/incomplete configuration never starts outputs. Stop invalidates staging.
+
+In v13, op5 pump = 0 means target-only inflation. Op7 must then supply nonzero
+sensor targets for every member. Positive op5 pump times up to 60000 ms remain
+bounded by the zone window minus lead, hold and release; they preserve explicit
+legacy timeout behavior when a nonzero target is supplied. The v13 app always
+sends zero for sensor mode. Zero with timed targets is rejected and clears staging.
+The info packet keeps the 2000 ms debug maximum; revision 13 separately enables
+these sequence semantics. v13 channel details may contain pump = 0 or a longer
+timed duration, with remaining time up to 60000 ms. Older telemetry stays bounded
+by its original version checks.
 
 Op8 sets the enabled-channel mask (0–63). Aux, pump, hold, release and repeats must
 all be zero. It uses the same session, replay and 250 ms receive-expiry checks.
@@ -292,7 +320,7 @@ Op11 stages a zone's pump speed after its op5 timing and op7 targets:
 aux = stage index 0–2, mask = same enabled zone channels, pump field = duty 25–100
 in 5% steps, hold/release/repeats zero. It requires idle state, current staged zone,
 accepted targets and unexpired 5 s staging. Invalid speed or order clears staging.
-A newly configured stage defaults to 100% for compatibility; the v12 app explicitly
+A newly configured stage defaults to 100% for compatibility; the current app explicitly
 sends and acknowledges every stage's speed. Stop/disconnect clears staging, and
 a rejected, expired, unconfirmed or cancelled speed request prevents the app from
 sending the final op6 commit. Session/sequence/replay/250ms receive-expiry checks
@@ -324,7 +352,7 @@ At most three notifications per 50 ms: summary, alternating exercise/detail, ana
 Disabled channels' detail/analog slots are skipped, not reassigned.
 Nominal refresh: exercise100ms, analog channel300ms, debug detail channel600ms.
 
-Native controller/protocol/channel-selection/calibration/PWM/sequence-speed tests and Node model/transport/audio
+Native controller/protocol/channel-selection/calibration/PWM/sequence-speed/target-control tests and Node model/transport/audio
 tests cover these behaviors. The classic ESP32 target compiles with core3.2.1.
 Persistence is tested with a storage callback; a real power-cycle restore and
 on-device notification reduction have not been physically verified for this release.

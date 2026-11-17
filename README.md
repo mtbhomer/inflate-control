@@ -1,4 +1,4 @@
-# MeditationVest control · v12
+# MeditationVest control · v13
 
 [Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
 Download the matching firmware from Device and upload it yourself with actuator
@@ -23,10 +23,13 @@ only navigation stays fixed at the bottom.
 sensor-target and timed inflation. Linked channels share the zone's speed; each
 pump still stops independently at its sensor target. Repeated cues retain speed.
 Existing settings default to 100%, and the exercise summary displays each speed.
-Lower duty may need more time to reach a target; the existing 2 s maximum pump limit
-is unchanged, and a missed target still stops and releases the routine. Settings
-are locked during activity. Reduced-speed sequences require firmware v12; older
-firmware keeps 100% sequences and cannot silently substitute full power.
+Sensor mode now pumps until the target without a separate 2-second timeout.
+Its old Pump limit field is hidden. The zone ends with the configured release
+interval, even if the final cue has not reached target; this is not a timeout fault.
+Timed mode accepts longer pump durations that fit inside the zone with hold and
+release. Zones retain their existing 1–60 s range. These new duration behaviors
+require firmware v13; the app blocks unsupported plans before sending them.
+Settings remain locked during activity, and Stop/disconnect still release.
 
 Device → Sensor setup uses the nominal XGZP6847A 3.3 V profile: 0.2–2.7 V = 0–100%.
 Choose a channel, add air in 0.1 s or 1 s increments while watching its reading,
@@ -35,7 +38,7 @@ between increments; Release or disconnect vents it, with a 10 s automatic releas
 after the last burst. These manual bursts ignore the saved maximum. Maximums are
 saved per hub in this browser and do not rescale the sensor percentage. Old manual
 reference targets are cleared while mappings/timings are preserved. Above 100%
-does not cancel an exercise; ADC/sensor/timeout faults still stop it. This feature
+does not cancel an exercise; ADC/sensor faults still stop it. This feature
 needs firmware v10, which compares measured millivolts rather than raw ADC counts.
 Device → **Pump speed test** adds a v11 PWM comparison. Choose a channel, duty and
 pump duration (default **1 second**). Each finite test records sensor start/end
@@ -47,7 +50,7 @@ The frequency is 100 Hz, with no startup boost. This is a pressure-rise comparis
 not motor RPM or calibrated airflow. Debug controls remain 100% duty and valves remain on/off. Add observations and Copy results. History is per hub/browser;
 Preview data is separate. See the firmware details for diode checks and limits.
 The user reported smooth starts at 25% and duty-dependent pressure rise on one CH0
-module with v11; other motors and the new routine feature still need physical testing.
+module with v11; other motors and the new routine duration behavior still needs physical testing.
 
 The progress panel appears during an exercise, with no redundant selected-zone
 panel while idle.
