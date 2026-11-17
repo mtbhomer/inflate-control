@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 enum class Phase:uint8_t { Off=0, Select=1, Pump=2, Hold=3, Release=4, Manual=5 };
-enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Invalid=4, Disabled=5, Stopped=6, Expired=7 };
+enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Invalid=4, Disabled=5, Stopped=6, Expired=7, StorageFailed=8 };
 struct Run {
  Phase phase=Phase::Off;
  uint8_t group=0;
@@ -22,7 +22,15 @@ struct RoutineRun {
 class HubController {
  public:
   static constexpr uint16_t MIN_PUMP=50,MAX_PUMP=2000,MAX_HOLD=10000,MAX_RELEASE=10000,MAX_REPEATS=999,LEAD=100;
-  explicit HubController(uint8_t mask):enabled(mask){}
+  explicit HubController(uint8_t mask):available(mask),enabled(mask){}
+  uint8_t enabledMask()const{return enabled;}
+  Reply setEnabledChannels(uint8_t mask,uint32_t now){
+    update(now);
+    if(mask>63 || (mask&~available))return Reply::Invalid;
+    if(activeMask()||routine.active)return Reply::Busy;
+    stop();for(auto&r:runs)r=Run{};enabled=mask;for(auto&s:sensors)s=SensorFeedback{};
+    return Reply::Accepted;
+  }
   Run runs[6];
   RoutineRun routine;
   SensorFeedback sensors[6];
@@ -208,6 +216,7 @@ class HubController {
     }
     if(routine.active)renderRoutineOutputs();
   }
+  const uint8_t available;
   uint8_t enabled;
   int8_t testChannel=-1;
 };

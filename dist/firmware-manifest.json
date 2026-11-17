@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v8",
+  "firmware": "MEDITATION VEST BLE v9",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -10,6 +10,26 @@
     4,
     5
   ],
+  "channelSelection": {
+    "availableChannels": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "defaultMask": 63,
+    "runtimeMaskFromHub": true,
+    "savedOnHub": "Preferences/NVS",
+    "idleOnly": true,
+    "allOffAllowed": true,
+    "disabledChannelsHidden": true,
+    "disabledSensorSampling": false,
+    "disabledChannelNotifications": false,
+    "disabledSensorPowerDisconnected": false,
+    "saveFailureRetainsPreviousMask": true
+  },
   "gpio": {
     "CH0": {
       "pump": 4,
@@ -43,7 +63,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 8,
+  "firmwareRevision": 9,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -93,7 +113,7 @@
     16,
     17
   ],
-  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v8 physical test",
+  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v9 physical test",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -125,7 +145,7 @@
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
   "previousHubPortTestsUserReportedWorking": true,
-  "v8HardwareTested": false,
+  "v9HardwareTested": false,
   "analogSensors": {
     "channels": [
       0,
@@ -154,11 +174,11 @@
   },
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
-    "BleProtocol.h": "de480629063cfd3ca5b2eb72a0ee5fbcd860c533991763a38f0e4b22b4628d39",
-    "HubController.h": "8cb89e2d477a860ad2f98bba47229a7f65deedbbe2391d0765aacc9d218b5764",
+    "BleProtocol.h": "9685278123b3d526cf71b4a1abc89a96b296d9cd385cf86adf86f994e929b8a9",
+    "HubController.h": "83d21f0b07f9b3cc80428a374e8d00950d484a8b5740fcb4d01cd1a0956564f9",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
-    "README.md": "0737f767596e070428f4ba2f45d3322a8fcfee4ef6079b91f3c6b2505ed6a7b0",
-    "hub_ble.ino": "5f055465ca752c98176720a8c1d25621a8d347c77e1f09878af47b0dd08d2565"
+    "README.md": "7feb76cc4f718e151cc196e2230817491a04b594a369f1b45e0f77b3fe145b77",
+    "hub_ble.ino": "c73b756138573b1648e6f7933d4c83f4b79fb67e4d414f8e4559c8ed390ffb72"
   }
 }

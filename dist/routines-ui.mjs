@@ -1,6 +1,6 @@
-import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=8';
-import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine,validCalibration,cleanCalibration,percentReading} from './routines.mjs?v=8';
-import {analogReading} from './sensor.mjs?v=8';
+import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=9';
+import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine,validCalibration,cleanCalibration,percentReading} from './routines.mjs?v=9';
+import {analogReading} from './sensor.mjs?v=9';
 const $=id=>document.getElementById(id);
 const text=(id,v)=>{if($(id).textContent!==v)$(id).textContent=v;};
 const seconds=ms=>(ms/1000).toFixed(1).replace(/\.0$/,'');
@@ -28,7 +28,7 @@ export class RoutineUI{
    <section class="routine-session"><div class="section-top"><h3>Session</h3><button id="routine-short" class="text-button">Short test timings</button></div><div class="session-grid">${input('routine-settle','Start delay',5,0,60)}<label class="routine-field" for="routine-repeat"><span>Repeat</span><select id="routine-repeat"><option value="once">Once</option><option value="count">Set rounds</option><option value="forever">Until Stop</option></select></label><label id="routine-count-label" class="routine-field" for="routine-count"><span>Total rounds</span><div class="number-field"><input id="routine-count" type="number" inputmode="numeric" min="1" max="999" step="1" value="3"></div></label></div>
     <div class="voice-option"><label><input id="routine-voice" type="checkbox"> Spoken guidance</label><button id="voice-preview" class="text-button">Preview voice</button></div><div class="session-grid"><label class="routine-field" for="voice-choice"><span>Guidance voice</span><select id="voice-choice"><option value="sarah">Sarah · prepared audio</option><option value="lily">Lily · prepared audio</option><option value="device">Device voice</option></select></label><label class="routine-field" for="voice-rate"><span>Speaking speed</span><select id="voice-rate"><option value="0.85">Slower · 0.85×</option><option value="1">Natural · 1×</option><option value="1.15">Faster · 1.15×</option></select></label></div><label id="device-voice-label" class="routine-field" for="device-voice" hidden><span>Voice on this device</span><select id="device-voice"></select></label><p id="voice-note" class="footnote"></p>
     <div id="routine-zone-summary" class="routine-zone-summary"></div><div id="routine-timeline" class="routine-timeline" aria-label="Routine order"></div><p id="routine-estimate" class="footnote"></p>
-    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need <a href="hub_ble.zip?v=8" download>firmware v8</a>. Your existing controls are under Device → Channel tests.</p>
+    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=9" download>Download v9</a>. Your existing controls are under Device → Channel tests.</p>
     <button id="routine-start" class="routine-start" disabled>Start breathing routine <span aria-hidden="true">→</span></button><p class="footnote">Keep Bluefy open for live guidance. Stop or Bluetooth disconnection releases the routine. Sensor targets stop each pump; the 2 s limit stops and releases the routine if a target is not reached.</p>
    </section>`;
   $('zones').innerHTML='<div class="routine-intro"><p class="eyebrow">MAP & ADJUST</p><h2>Zone mapping</h2><p id="zone-routine-title"></p><div class="sequence-picker" role="group" aria-label="Vest side"><button id="map-front" aria-pressed="true">Front</button><button id="map-back" aria-pressed="false">Back</button></div></div>';
@@ -51,7 +51,7 @@ export class RoutineUI{
   $('zone-target').addEventListener('input',()=>{this.editCfg.zones[this.editZone].target=$('zone-target').value===''?null:Number($('zone-target').value);this.save();this.changed();});
   for(const kind of ['breathing','scan'])$(`routine-${kind}`).addEventListener('click',()=>{if(this.locked())return;this.data.selected=kind;this.save();this.changed();});
   for(const id of Object.keys(ZONES))$(`zone-${id}`).addEventListener('click',()=>{this.zone=id;this.changed();});
-  for(let ch=0;ch<6;ch++)$(`assign-${ch}`).addEventListener('click',()=>{if(this.locked())return;const z=this.cfg.zones[this.zone],bit=1<<ch;if(!(z.mask&bit)&&channels(z.mask).length>=2){text('mapping-message','A zone can use up to two channels. Unselect one first.');return;}z.mask^=bit;this.save();this.changed();});
+  for(let ch=0;ch<6;ch++)$(`assign-${ch}`).addEventListener('click',()=>{if(this.locked())return;const z=this.cfg.zones[this.zone],bit=1<<ch;if(!(this.enabledMask&bit))return;z.mask&=this.enabledMask;if(!(z.mask&bit)&&channels(z.mask).length>=2){text('mapping-message','A zone can use up to two channels. Unselect one first.');return;}z.mask^=bit;this.save();this.changed();});
   for(const [id,key] of [['zone-pump','pump'],['zone-hold','hold'],['zone-release','release'],['zone-window','window']])$(id).addEventListener('input',()=>{this.editCfg.zones[this.editZone][key]=this.ms(id);this.save();this.changed();});
   $('include-lower').addEventListener('change',()=>{this.editCfg.lower=$('include-lower').checked;if(!this.editCfg.lower&&this.editZone==='lower')this.editZone='upper';this.save();this.fill();this.changed();});
   $('routine-settle').addEventListener('input',()=>{this.editCfg.settle=this.ms('routine-settle');this.save();this.changed();});
@@ -66,7 +66,7 @@ export class RoutineUI{
   $('device-voice').addEventListener('change',()=>{this.data.browserVoice=$('device-voice').value;this.save();});
   const refreshVoices=()=>{if(!this.speechAvailable)return;const voices=speechSynthesis.getVoices().filter(v=>/^en\b/.test(v.lang));$('device-voice').replaceChildren(new Option('Automatic English voice',''),...voices.map(v=>new Option(v.name+' · '+v.lang,v.voiceURI)));$('device-voice').value=this.data.browserVoice;};
   refreshVoices();if(this.speechAvailable)speechSynthesis.addEventListener('voiceschanged',refreshVoices);
-  $('routine-start').addEventListener('click',()=>{try{const plan=buildRoutine(this.data.selected,this.runCfg,this.context().info?.mask??63,this.refs);this.start(plan);}catch(e){text('routine-validation',e.message);}});
+  $('routine-start').addEventListener('click',()=>{try{const plan=buildRoutine(this.data.selected,this.runCfg,this.enabledMask,this.refs);this.start(plan);}catch(e){text('routine-validation',e.message);}});
 
   document.addEventListener('visibilitychange',()=>{if(document.hidden)this.cancelVoice();else if(this.context().routineKind&&this.data.spoken){this.armed=true;this.lastCue='';}});
   this.fill();
@@ -74,7 +74,7 @@ export class RoutineUI{
  get refs(){return this.context().demo?this.demoCalibration:this.calibration;}
  reading(ch){const c=this.context(),a=c.analogStates[ch];return c.fresh?analogReading(a?.sample,c.now-(a?.received??0)):null;}
  capture(ch,key){
-  const c=this.context(),r=this.reading(ch);if(!Number.isInteger(ch)||ch<0||ch>5||!['zero','reference'].includes(key)||c.routineKind||c.pending||!r||r.low||r.high)return;
+  const c=this.context(),r=this.reading(ch);if(!Number.isInteger(ch)||ch<0||ch>5||!['zero','reference'].includes(key)||!(this.enabledMask&(1<<ch))||c.routineKind||c.pending||!r||r.low||r.high)return;
   const raw=c.analogStates[ch].sample.raw,ref=this.refs[ch];
   if(key==='zero'){ref.zero=raw;ref.reference=null;}
   else if(!Number.isInteger(ref.zero)||raw-ref.zero<32){this.calibrationMessage=`CH${ch}: set vented 0% first, then inflate to a higher reference level.`;this.changed();return;}
@@ -96,6 +96,7 @@ export class RoutineUI{
    n.querySelector('[data-note]').textContent=`${cal?.zero?'0% saved':'Vent fully, then record 0%'} · ${validCalibration(cal)?'100% saved':'Reference needed'}`;
   }
  }
+ get enabledMask(){const c=this.context();return c.enabledMask??c.info?.mask??63;}
  get cfg(){return this.data[this.mapKind];}
  get editCfg(){return this.data[this.editKind];}
  get runCfg(){return this.data[this.data.selected];}
@@ -119,19 +120,19 @@ export class RoutineUI{
   const c=this.context(),running=c.fresh&&c.routineKind>0,live=running&&c.routineFresh?c.routine:null,locked=this.locked();
   document.querySelector('.routine-live').hidden=!c.routineKind;
   if(live)this.data.selected=live.routineKind===1?'breathing':'scan';
-  const activeIds=this.mapKind==='breathing'?['front']:['upper','middle','lower'],z=this.cfg.zones[this.zone],editIds=zoneIds(this.editKind,this.editCfg),editZ=this.editCfg.zones[this.editZone];
+  const activeIds=this.mapKind==='breathing'?['front']:['upper','middle','lower'],z={...this.cfg.zones[this.zone],mask:this.cfg.zones[this.zone].mask&this.enabledMask},editIds=zoneIds(this.editKind,this.editCfg),editZ=this.editCfg.zones[this.editZone];
   const runCfg=this.runCfg,runIds=zoneIds(this.data.selected,runCfg),liveZone=live?zoneIds(this.data.selected,{lower:live.count===3})[live.step]:runIds[0];
   for(const mode of ['breathing','scan']){$(`routine-${mode}`).setAttribute('aria-pressed',String(mode===this.data.selected));$(`routine-${mode}`).disabled=locked;}
   text('routine-description',this.data.selected==='breathing'?'Gentle front cues invite awareness of natural breathing. Follow your own breathing rhythm.':'Repeated cues in each back area, moving from upper to middle to optional lower back.');
   text('zone-routine-title',this.mapKind==='breathing'?'Front airbag':'Upper, middle and lower back');$('map-front').setAttribute('aria-pressed',String(this.mapKind==='breathing'));$('map-back').setAttribute('aria-pressed',String(this.mapKind==='scan'));
   text('vest-title',this.mapKind==='breathing'?'Front of vest':'Back of vest');
-  for(const [id,spec] of Object.entries(ZONES)){const show=this.mapKind==='breathing'?id==='front':id!=='front';const button=$(`zone-${id}`);button.hidden=!show;button.disabled=false;button.setAttribute('aria-pressed',String(this.zone===id));button.classList.toggle('zone-live',Boolean(live&&live.phase!==1&&id===liveZone));const mapping=this.cfg.zones[id]?.mask??0;text(`zone-channels-${id}`,channels(mapping).map(ch=>'CH'+ch).join(' + ')||'Assign channels');}
+  for(const [id,spec] of Object.entries(ZONES)){const show=this.mapKind==='breathing'?id==='front':id!=='front';const button=$(`zone-${id}`);button.hidden=!show;button.disabled=false;button.setAttribute('aria-pressed',String(this.zone===id));button.classList.toggle('zone-live',Boolean(live&&live.phase!==1&&id===liveZone));const mapping=(this.cfg.zones[id]?.mask??0)&this.enabledMask;text(`zone-channels-${id}`,channels(mapping).map(ch=>'CH'+ch).join(' + ')||'Assign channels');}
   $('include-lower').parentElement.hidden=this.editKind!=='scan';$('include-lower').checked=this.editCfg.lower;$('include-lower').disabled=locked;
   for(const button of document.querySelectorAll('[data-config-kind]')){button.setAttribute('aria-pressed',String(button.dataset.configKind===this.editKind));button.disabled=locked;}
   const zoneButtons=editIds.map(id=>`<button data-config-zone="${id}" aria-pressed="${id===this.editZone}" ${locked?'disabled':''}>${ZONES[id].name}</button>`).join('');if($('sequence-zone-picker').innerHTML!==zoneButtons)$('sequence-zone-picker').innerHTML=zoneButtons;
   text('zone-editor-title',ZONES[this.zone].name);text('zone-editor-code',ZONES[this.zone].code);
-  const occupied=activeIds.filter(id=>id!==this.zone).reduce((m,id)=>m|this.cfg.zones[id].mask,0);
-  for(let ch=0;ch<6;ch++){const selected=Boolean(z.mask&(1<<ch)),elsewhere=Boolean(occupied&(1<<ch)),unavailable=c.info&&!(c.info.mask&(1<<ch)),full=!selected&&channels(z.mask).length>=2;$(`assign-${ch}`).disabled=locked||elsewhere||unavailable||full;$(`assign-${ch}`).setAttribute('aria-pressed',String(selected));text(`assign-note-${ch}`,selected?'Assigned':elsewhere?'Other zone':unavailable?'Unavailable':full?'Pair selected':'Available');}
+  const occupied=activeIds.filter(id=>id!==this.zone).reduce((m,id)=>m|(this.cfg.zones[id].mask&this.enabledMask),0);
+  for(let ch=0;ch<6;ch++){const selected=Boolean(z.mask&(1<<ch)),elsewhere=Boolean(occupied&(1<<ch)),unavailable=!(this.enabledMask&(1<<ch)),full=!selected&&channels(z.mask).length>=2;$(`assign-${ch}`).hidden=unavailable;$(`assign-${ch}`).disabled=locked||elsewhere||unavailable||full;$(`assign-${ch}`).setAttribute('aria-pressed',String(selected));text(`assign-note-${ch}`,selected?'Assigned':elsewhere?'Other zone':unavailable?'Unavailable':full?'Pair selected':'Available');}
   text('mapping-message',channels(z.mask).length===2?'Both start together. Each pump stops at its own target; both release together.':'Assignments are saved for each routine.');
   for(const id of ['zone-mode','zone-target','zone-pump','zone-hold','zone-release','zone-window','routine-settle','routine-repeat','routine-count','routine-short'])$(id).disabled=locked;
   $('routine-count-label').hidden=$('routine-repeat').value!=='count';
@@ -139,7 +140,7 @@ export class RoutineUI{
   text('zone-timing-note',`Repeat inflate → hold → release throughout this ${seconds(editZ.window)} s zone. A new cue starts only when a full cycle fits. ${editZ.mode==='sensor'?'Each pump stops at its target, with a '+seconds(editZ.pump)+' s maximum.':'Timed pumping does not use sensor feedback.'}`);
   this.renderSensors($('zone-sensor-readings'),channels(z.mask));
   text('calibration-mode',c.demo?'Preview references':'Saved for this hub');text('calibration-message',this.calibrationMessage||'');
-  for(let ch=0;ch<6;ch++){const node=$(`calibration-debug-${ch}`);if(node)this.renderSensors(node,[ch]);}
+  for(let ch=0;ch<6;ch++){const node=$(`calibration-debug-${ch}`);if(node)this.renderSensors(node,this.enabledMask&(1<<ch)?[ch]:[]);}
   const canSpeak=this.data.voice!=='device'?Boolean(globalThis.AudioContext||globalThis.webkitAudioContext):this.speechAvailable;
   $('routine-voice').disabled=!canSpeak;$('voice-preview').disabled=!canSpeak||running||c.pending;$('voice-choice').disabled=running;$('voice-rate').disabled=running;$('device-voice').disabled=running;
   $('device-voice-label').hidden=this.data.voice!=='device';
@@ -147,8 +148,8 @@ export class RoutineUI{
   if(this.voiceNoteKey!==this.data.voice){text('voice-note',voiceNote);this.voiceNoteKey=this.data.voice;}
   const cfg=this.editCfg,order=editIds.map(id=>`${ZONES[id].name} · ${seconds(cfg.zones[id].window)} s`);text('routine-timeline',[`${seconds(cfg.settle)} s settle`,...order].join(' → '));
   const perRound=editIds.reduce((n,id)=>n+cfg.zones[id].window,0),total=cfg.settle+perRound*(cfg.repeats||1);text('routine-estimate',cfg.repeats?`${cfg.repeats} ${cfg.repeats===1?'round':'rounds'} · about ${seconds(total)} seconds total.`:`Repeats until Stop · ${seconds(perRound)} seconds per round after settling.`);
-  const overview=runIds.map(id=>{const a=runCfg.zones[id];return `<div class="zone-overview"><span><b>${ZONES[id].name}</b><small>${channels(a.mask).map(ch=>'CH'+ch).join(' + ')||'Assign channels'}</small></span><span><b>${a.mode==='timed'?seconds(a.pump)+' s':a.target===null?'Set target':a.target+'%'}</b><small>${seconds(a.window)} s · repeated cues</small></span></div>`;}).join('');if($('routine-zone-summary').innerHTML!==overview)$('routine-zone-summary').innerHTML=overview;
-  let error='';try{buildRoutine(this.data.selected,runCfg,c.info?.mask??63,this.refs);}catch(e){error=e.message;}
+  const overview=runIds.map(id=>{const a=runCfg.zones[id];return `<div class="zone-overview"><span><b>${ZONES[id].name}</b><small>${channels(a.mask&this.enabledMask).map(ch=>'CH'+ch).join(' + ')||'Assign channels'}</small></span><span><b>${a.mode==='timed'?seconds(a.pump)+' s':a.target===null?'Set target':a.target+'%'}</b><small>${seconds(a.window)} s · repeated cues</small></span></div>`;}).join('');if($('routine-zone-summary').innerHTML!==overview)$('routine-zone-summary').innerHTML=overview;
+  let error='';try{buildRoutine(this.data.selected,runCfg,this.enabledMask,this.refs);}catch(e){error=e.message;}
   const fault=c.routineFault?`CH${c.routineFaultChannel}: ${c.routineFault===2?'target was not reached within the pump limit':'sensor reading is missing, stale or at an ADC endpoint'}. Routine stopped and released. Check the channel before restarting.`:'';
   text('routine-validation',fault||error||(!c.online?'Connect your hub or try the interface to start.':!c.fresh?'Waiting for fresh hub status.':running?'Routine running. Settings stay locked until it finishes or you press Stop.':c.busy?'Stop the active channel test or pattern first.':'Ready with your saved settings.'));
   $('routine-upgrade').hidden=!c.online||c.info?.routines;

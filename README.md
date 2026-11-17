@@ -1,4 +1,4 @@
-# MeditationVest control · v8
+# MeditationVest control · v9
 
 [Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
 Download the matching firmware from Device and upload it yourself with actuator
@@ -8,6 +8,14 @@ Four bottom tabs separate Exercises, Zones, Sequences and Device. Exercises is a
 simple choose-and-start view. Zones has independent Front/Back mapping and sensor
 reference capture. Sequences holds targets, timings, repeats and voice options.
 Device contains connection settings and the original per-channel debugging tools.
+Under **Enabled channels**, select the boards in use and press **Apply channels**
+while idle. Disabled channels disappear from other screens; the hub skips their
+sensor sampling and channel notifications and rejects actuator commands for them.
+The selection is saved on the hub across restarts. All six default to enabled;
+all-off and later re-enabling are supported. This setting requires firmware v9.
+Saved zone assignments are retained, but only enabled members run. An empty required
+zone blocks Start until an enabled channel is assigned. Preview changes stay local
+to the preview and never alter the hub's selection. Sensor power remains connected.
 Stop controls sit beside the exercise Start button and within Device controls;
 only navigation stays fixed at the bottom. The progress panel appears during an
 exercise, with no redundant selected-zone panel while idle.
@@ -29,7 +37,8 @@ reconnect handler never replays a command. Preview sends no Bluetooth commands
 and keeps synthetic calibration separate from real device calibration.
 
 Checks: `npm ci --ignore-scripts` then `node --test tests/*.test.mjs`; native `tests/hub_ble_test.cpp` and
-`tests/hub_routine_test.cpp`; `arduino-cli compile --fqbn esp32:esp32:esp32 firmware/hub_ble`.
+`tests/hub_routine_test.cpp` and `tests/hub_channels_test.cpp`;
+`arduino-cli compile --fqbn esp32:esp32:esp32 firmware/hub_ble`.
 GitHub Pages publishes only dist/. Canonical firmware is copied by the private
 workspace's package script. Software checks are not a powered vest test.
 

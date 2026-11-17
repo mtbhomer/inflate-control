@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=8';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=9';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -30,13 +30,17 @@ export class HubBLE extends EventTarget{
  status(value){try{
   const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
   if(s.kind==='routine'){if(!this.info.routines)throw Error('Unexpected routine status; reconnect.');this.emit('routine',s);return;}
-  if(s.kind==='analog'){if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
-  if(s.kind==='detail'){if(s.phase===5&&!this.info.testControls)throw Error('Unexpected test status; reconnect.');if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
+  if(s.kind==='analog'){if(this.info.channelSelection&&!(this.info.mask&(1<<s.channel)))return;if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
+  if(s.kind==='detail'){if(this.info.channelSelection&&!(this.info.mask&(1<<s.channel)))return;if(s.phase===5&&!this.info.testControls)throw Error('Unexpected test status; reconnect.');if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
+  if(this.info.channelSelection){
+   if(s.enabledMask===null||(s.enabledMask&~this.info.availableMask)||(s.active&~s.enabledMask))throw Error('Invalid channel configuration; reconnect.');
+  }else if(s.reply===8)throw Error('Unexpected settings response; reconnect.');
   if(this.info.testControls&&(s.flags!==0||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
   if(this.info.testControls&&s.phases.some((phase,ch)=>{const bits=(s.raw>>(2*ch))&3;return phase===5?bits===0:bits!==([0,2,3,2,0][phase]);}))throw Error('Output states disagree with channel phases; reconnect.');
   if(!this.info.testControls&&s.phases.includes(5))throw Error('Unexpected manual test status; reconnect.');
   if((s.routineKind||s.routineFault)&&!this.info.routines)throw Error('Unexpected routine status; reconnect.');
-  if(s.active&~this.info.mask)throw Error('Channel configuration changed; reconnect.');
+  if(s.active&~(this.info.channelSelection?s.enabledMask:this.info.mask))throw Error('Channel configuration changed; reconnect.');
+  if(this.info.channelSelection&&s.enabledMask!==this.info.mask){this.info={...this.info,mask:s.enabledMask,analogChannels:Array.from({length:6},(_,ch)=>ch).filter(ch=>s.enabledMask&(1<<ch))};this.emit('configuration',this.info);}
   this.emit('status',s);
   const waiter=this.waiters.get(s.seq);if(waiter){clearTimeout(waiter.timer);this.waiters.delete(s.seq);waiter.resolve(s);}
   if(s.reply===6)for(const [seq,w] of this.waiters)if(seq<s.seq){clearTimeout(w.timer);this.waiters.delete(seq);w.resolve({...s,superseded:true});}

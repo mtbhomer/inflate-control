@@ -1,7 +1,7 @@
-# MeditationVest BLE v8
+# MeditationVest BLE v9
 
-BLE name: **MeditationVest**. This firmware adds sensor-target exercises to the
-existing six-channel controls. The working GPIO map is unchanged.
+BLE name: **MeditationVest**. This firmware adds a saved selection of enabled
+channels to the existing exercises and controls. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
@@ -22,8 +22,34 @@ module/cable on each port. This update does not require rewiring.
 Disconnect the actuator battery physically and keep JP5 open. Upload this sketch
 using the classic ESP32 target (`esp32:esp32:esp32`). The user uploads; this release
 has not been flashed or physically actuated by the assistant. Reconnect in Bluefy
-after upload. The new exercises require v8; earlier firmware keeps its supported
-manual/pattern controls.
+after upload. Channel selection requires v9; exercises require v8 or newer.
+Earlier firmware keeps its supported controls. The current download is v9;
+`hub_ble-v8.zip` retains the previous release.
+
+## Enabled channels
+
+Open **Device → Enabled channels**, select the boards in use, then **Apply channels**.
+Changes are accepted only when idle. Stop an exercise, test or pattern first.
+All six channels are enabled initially; selecting none is allowed and you can
+re-enable them from the same settings. Applying a selection never starts outputs.
+
+The ESP32 saves the selection in Preferences/NVS and restores it at startup.
+The app reads the hub's selection on connection, including when using another phone.
+An unchanged selection does not rewrite flash; a failed save retains the previous
+selection. The browser caches the last confirmed selection for offline display only.
+Preview settings are separate and never change the hub or its cached selection.
+
+Disabled channels are hidden from zone assignments, sensor displays, channel tests
+and linking choices. They remain visible in the Enabled channels picker. Their
+outputs stay off, actuator commands are rejected, and analog sampling and per-channel
+BLE notifications are skipped. This does not disconnect their wired 3.3 V supply.
+Remaining channels keep their normal refresh interval; overall BLE traffic drops.
+
+Saved zone assignments and sensor references are retained when a channel is disabled.
+Only enabled members participate in an exercise; a saved pair can run with one
+enabled member. A required zone with no enabled member prevents Start until assigned
+an enabled channel. Re-enabling restores saved assignments, unless that zone's
+assignment was edited while the channel was disabled.
 
 ## Four app screens
 
@@ -33,11 +59,12 @@ manual/pattern controls.
 - **Sequences:** choose which sequence to configure, select its zone, and edit
   target, pump limit, hold, released interval and zone duration. Choose a round
   count or Until Stop, optional lower back, preparation delay and spoken guidance.
-- **Device:** connection options, firmware download, and existing channel tests,
+- **Device:** connection options, enabled channels, firmware download, and channel tests,
   individual switches, linked patterns, voltage/ADC readings and charts.
 
 Changing the Zones view or the sequence being edited does not change the exercise
-selected on Exercises. Settings are saved locally in the browser.
+selected on Exercises. Exercise settings are saved locally in the browser;
+enabled-channel selection is saved on the hub.
 
 ## Percentage targets
 
@@ -122,7 +149,7 @@ windows may interrupt a longer prompt at the next zone. Voice quality is subject
 
 ## Firmware protocol and checks
 
-Protocol2, firmware8, flags127, enabled/analog mask63, sensor selector255.
+Protocol2, firmware9, flags255, enabled/analog mask0–63, sensor selector255.
 18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
 receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
 New staged commands: op5 = zone timing (aux index, mask channels, pump max, hold,
@@ -131,15 +158,27 @@ first/second channel in ascending order, 0/0 timed mode); op6 = commit (aux kind
 mask stage count, pump field preparation, repeats round count, zero means forever).
 Invalid/incomplete configuration never starts outputs. Stop invalidates staging.
 
+Op8 sets the enabled-channel mask (0–63). Aux, pump, hold, release and repeats must
+all be zero. It uses the same session, replay and 250 ms receive-expiry checks.
+It is rejected during any active output or routine, including preparation and
+released intervals. Accepted changes clear staged routines and stale channel/sensor
+state; GPIOs are committed off before the flash write. Reply8 means storage failed.
+The authoritative mask and command acknowledgement arrive in one summary packet:
+byte14 is the mask and byte15 is `0xa9`, replacing the retired digital-sensor age.
+Older firmware is decoded separately and does not expose channel selection.
+
 Summary byte19 is active exercise kind1/2, 0 idle, or fault marker
 `0x80 | (fault << 3) | channel` (fault1 sensor invalid, fault2 target timeout).
 0x30 packets contain kind/phase/step/count, session, round/repeats, phase remaining,
 16-bit zone elapsed and 16-bit pulse count. Phases1–6: preparation, valve lead,
 inflate, hold, release gap, released remainder. Analog data stays in 0x20 packets.
-Three notifications per 50 ms: summary, alternating exercise/detail, analog.
+At most three notifications per 50 ms: summary, alternating exercise/detail, analog.
+Disabled channels' detail/analog slots are skipped, not reassigned.
 Nominal refresh: exercise100ms, analog channel300ms, debug detail channel600ms.
 
-Native controller/protocol tests and Node model/transport/audio tests cover these
-behaviors. ESP32 core3.2.1 compile: 1,113,526 flash bytes /39,960 RAM bytes.
+Native controller/protocol/channel-selection tests and Node model/transport/audio
+tests cover these behaviors. The classic ESP32 target compiles with core3.2.1.
+Persistence is tested with a storage callback; a real power-cycle restore and
+on-device notification reduction have not been physically verified for v9.
 Software/simulated checks do not establish physical pressure response or simultaneous
 paired-module performance. No assistant upload, BLE hardware connection or actuation.

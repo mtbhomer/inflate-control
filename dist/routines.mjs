@@ -23,8 +23,8 @@ export function buildRoutine(kind,cfg,enabled=63,calibration=[]){
  if(!['breathing','scan'].includes(kind)||!integer(cfg?.settle,0,60000)||!integer(cfg?.repeats,0,999))throw Error('Use a start delay of 0–60 seconds and 1–999 rounds, or Until Stop.');
  let used=0;
  const stages=zoneIds(kind,cfg).map(id=>{
-  const z=cfg.zones[id],label=ZONES[id].name;
-  if(!z||!integer(z.mask,1,63)||channels(z.mask).length>2||(z.mask&~enabled))throw Error(`Assign one or two available channels to ${label.toLowerCase()} in Zones.`);
+  const saved=cfg.zones[id],z=saved?{...saved,mask:saved.mask&enabled}:null,label=ZONES[id].name;
+  if(!saved||!integer(saved.mask,1,63)||!integer(z.mask,1,63)||channels(z.mask).length>2)throw Error(`Assign one or two enabled channels to ${label.toLowerCase()} in Zones.`);
   if(used&z.mask)throw Error('A channel can belong to only one zone in a routine.');used|=z.mask;
   if(!integer(z.pump,50,2000)||!integer(z.hold,0,10000)||!integer(z.release,500,10000)||!integer(z.window,1000,60000)||z.window<100+z.pump+z.hold+z.release)throw Error(`${label}: the zone duration must fit a full pump, hold and release cycle (including 0.1 s valve lead).`);
   if(!['sensor','timed'].includes(z.mode))throw Error('Choose sensor target or timed inflation.');

@@ -5,6 +5,7 @@
 #include <driver/gpio.h>
 #include <esp_system.h>
 #include <atomic>
+#include <Preferences.h>
 #include "PinMap.h"
 #include "HubController.h"
 #include "BleProtocol.h"
@@ -14,6 +15,12 @@
 #endif
 
 HubController controller(ENABLED_MASK);
+Preferences channelPrefs;
+bool channelPrefsReady=false;
+std::atomic<uint8_t> configuredMask{ENABLED_MASK};
+std::atomic<uint32_t> configurationGeneration{0};
+uint32_t sensorGeneration=0; // Protected with sensorSnapshot by stateMux.
+bool saveChannels(uint8_t mask);
 QueueHandle_t commands;
 BLECharacteristic *statusChar,*infoChar;
 std::atomic<bool> connected{false},restartAdvertising{false},serialStop{false},endContinuous{false};
@@ -30,9 +37,9 @@ AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO ta
 SensorFeedback sensorSnapshot[6]; // Averaged raw samples copied to the control task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=ENABLED_MASK;b[2]=255;b[3]=8; // Guided routines, tests and six sensors.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=configuredMask.load();b[2]=255;b[3]=9; // Saved enabled-channel selection.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
- put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=127;b[19]=ANALOG_MASK;
+ put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=255;b[19]=b[1]&ANALOG_MASK;
 }
 class InfoCallbacks:public BLECharacteristicCallbacks{
  void onRead(BLECharacteristic*c) override {uint8_t b[20];fillInfo(b);c->setValue(b,20);}
@@ -59,13 +66,25 @@ void applyOutputs(){
  for(uint8_t ch=0;ch<6;++ch)if(ENABLED_MASK&(1<<ch))gpio_set_level((gpio_num_t)VALVE_PINS[ch],controller.valve(ch));
  for(uint8_t ch=0;ch<6;++ch)if((ENABLED_MASK&(1<<ch))&&controller.pump(ch))gpio_set_level((gpio_num_t)PUMP_PINS[ch],1);
 }
+bool saveChannels(uint8_t mask){
+ // The controller is idle here. Commit LOW outputs before a potentially slow flash write.
+ applyOutputs();
+ return channelPrefsReady&&channelPrefs.putUChar("channels",mask)==1;
+}
 void process(Command c,uint32_t now){
- reply=applyCommand(controller,c,session.load(),currentSession,lastSeq,reply,now);
+ const uint8_t oldMask=controller.enabledMask();
+ reply=applyCommand(controller,c,session.load(),currentSession,lastSeq,reply,now,saveChannels);
+ if(oldMask!=controller.enabledMask()){
+   configuredMask.store(controller.enabledMask());configurationGeneration.fetch_add(1);
+ }
 }
 void controlTask(void*){
  for(;;){
    const uint32_t now=millis();
-   portENTER_CRITICAL(&stateMux);memcpy(controller.sensors,sensorSnapshot,sizeof(sensorSnapshot));portEXIT_CRITICAL(&stateMux);
+   portENTER_CRITICAL(&stateMux);
+   if(sensorGeneration==configurationGeneration.load())memcpy(controller.sensors,sensorSnapshot,sizeof(sensorSnapshot));
+   else for(auto&s:controller.sensors)s=SensorFeedback{};
+   portEXIT_CRITICAL(&stateMux);
    const uint32_t nonce=session.load();
    if(nonce!=currentSession){currentSession=nonce;lastSeq=0;reply=Reply::None;controller.clearStagedRoutine();}
    if(endContinuous.exchange(false))controller.endContinuous();
@@ -74,7 +93,7 @@ void controlTask(void*){
    Command c;bool haveStop;
    portENTER_CRITICAL(&stateMux);haveStop=stopPending;c=stopCommand;stopPending=false;portEXIT_CRITICAL(&stateMux);
    if(haveStop)process(c,now);
-   for(unsigned n=0;n<4 && xQueueReceive(commands,&c,0)==pdTRUE;++n)process(c,now);
+   for(unsigned n=0;n<4 && xQueueReceive(commands,&c,0)==pdTRUE;++n)process(c,millis());
    applyOutputs();
    const uint32_t sampledAt=millis();
    uint8_t b[20],details[6][20],routine[20];
@@ -94,7 +113,10 @@ void setup(){
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v8: guided front/back routines and channel tests; unchanged GPIO map. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v9: saved enabled channels; unchanged GPIO map. x stops.");
+ channelPrefsReady=channelPrefs.begin("inflate-hub",false);
+ const uint8_t saved=channelPrefsReady?channelPrefs.getUChar("channels",ENABLED_MASK):ENABLED_MASK;
+ controller.setEnabledChannels(saved<=63?saved:ENABLED_MASK,millis());configuredMask.store(controller.enabledMask());
  commands=xQueueCreate(4,sizeof(Command));
  if(!commands){Serial.println("Queue allocation failed; outputs remain OFF.");return;}
  if(xTaskCreatePinnedToCore(controlTask,"inflate-control",4096,nullptr,3,nullptr,1)!=pdPASS){Serial.println("Control task failed; BLE not started.");return;}
@@ -111,34 +133,39 @@ void setup(){
 void loop(){
  for(unsigned n=0;n<32 && Serial.available();++n){char c=Serial.read();if(c=='x'||c=='X')serialStop.store(true);}
  if(restartAdvertising.exchange(false))BLEDevice::startAdvertising();
- static uint32_t lastAnalogAttempt=0;
+ static uint32_t lastAnalogAttempt=0,localGeneration=UINT32_MAX;
  if(millis()-lastAnalogAttempt>=20){
    lastAnalogAttempt=millis();
+   const uint32_t generation=configurationGeneration.load();const uint8_t mask=configuredMask.load();
+   if(generation!=localGeneration){for(auto&s:analogSensors)s=AnalogSensor{};localGeneration=generation;}
    // Arduino's raw and calibrated-millivolt APIs perform separate conversions.
-   for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
+   for(uint8_t ch=0;ch<6;++ch)if((mask&ANALOG_MASK)&(1<<ch)){
      const uint16_t adcValue=analogRead(ANALOG_PINS[ch]);
      const uint32_t mv=analogReadMilliVolts(ANALOG_PINS[ch]);
      analogSensors[ch].add(adcValue,mv>65535?65535:uint16_t(mv),millis());
    }
    SensorFeedback feedback[6];
    for(unsigned ch=0;ch<6;++ch){const auto&s=analogSensors[ch];feedback[ch]={s.raw,s.lastSample,s.limits,s.available};}
-   portENTER_CRITICAL(&stateMux);memcpy(sensorSnapshot,feedback,sizeof(feedback));portEXIT_CRITICAL(&stateMux);
+   portENTER_CRITICAL(&stateMux);memcpy(sensorSnapshot,feedback,sizeof(feedback));sensorGeneration=generation;portEXIT_CRITICAL(&stateMux);
  }
  static uint32_t lastNotify=0;static uint8_t telemetryChannel=0,detailChannel=0;static bool sendRoutine=true;
  if(statusChar && millis()-lastNotify>=50){
    lastNotify=millis();uint8_t b[20],details[6][20],routine[20];
    portENTER_CRITICAL(&stateMux);memcpy(b,statusBytes,20);memcpy(details,detailBytes,sizeof(details));memcpy(routine,routineBytes,20);portEXIT_CRITICAL(&stateMux);
    statusChar->setValue(b,20);if(connected.load())statusChar->notify();
-   // Three notifications per 50 ms: summary, alternating routine/detail, analog.
-   // Routine refresh ~100 ms; each analog ~300 ms; each legacy detail ~600 ms.
+   // Keep the six-channel time slots, skipping disabled sensor/detail slots.
+   // Each enabled sensor remains ~300 ms; fewer channels means less BLE traffic.
    if(connected.load()){
+     const uint8_t mask=b[15]==0xa9?b[14]:0;
      const uint8_t ch=telemetryChannel;telemetryChannel=(telemetryChannel+1)%6;
-     if(sendRoutine)statusChar->setValue(routine,20);
-     else{statusChar->setValue(details[detailChannel],20);detailChannel=(detailChannel+1)%6;}
-     sendRoutine=!sendRoutine;statusChar->notify();
-     uint8_t analogBytes[20];const uint32_t now=millis();const auto &sensor=analogSensors[ch];
-     encodeAnalog(analogBytes,ch,session.load(),sensor.flags(now),sensor.raw,sensor.millivolts,sensor.age(now));
-     statusChar->setValue(analogBytes,20);statusChar->notify();
+     if(sendRoutine){statusChar->setValue(routine,20);statusChar->notify();}
+     else{if(mask&(1<<detailChannel)){statusChar->setValue(details[detailChannel],20);statusChar->notify();}detailChannel=(detailChannel+1)%6;}
+     sendRoutine=!sendRoutine;
+     if((mask&(1<<ch))&&localGeneration==configurationGeneration.load()){
+       uint8_t analogBytes[20];const uint32_t now=millis();const auto &sensor=analogSensors[ch];
+       encodeAnalog(analogBytes,ch,session.load(),sensor.flags(now),sensor.raw,sensor.millivolts,sensor.age(now));
+       statusChar->setValue(analogBytes,20);statusChar->notify();
+     }
    }
    statusChar->setValue(b,20); // Reads return the summary, never an arbitrary channel detail.
  }

@@ -12,10 +12,11 @@ inline void put16(uint8_t*p,uint16_t v){p[0]=v;p[1]=v>>8;}
 inline void put32(uint8_t*p,uint32_t v){put16(p,v);put16(p+2,v>>16);}
 struct Command {uint8_t op=0,mask=0,aux=0;uint16_t seq=0,pumpMs=0,holdMs=0,releaseMs=0,repeats=1;uint32_t session=0,receivedAt=0;};
 inline bool decodeCommand(const uint8_t*p,size_t n,Command&c){
- if(n!=18 || p[0]!=PROTOCOL_VERSION || p[1]<1 || p[1]>7 || (p[1]<=4&&p[3]!=0))return false;
+ if(n!=18 || p[0]!=PROTOCOL_VERSION || p[1]<1 || p[1]>8 || ((p[1]<=4||p[1]==8)&&p[3]!=0))return false;
  c.op=p[1];c.mask=p[2];c.aux=p[3];c.seq=read16(p+4);c.pumpMs=read16(p+6);c.holdMs=read16(p+8);c.session=read32(p+10);c.releaseMs=read16(p+14);c.repeats=read16(p+16);
  if(!c.seq)return false;
  if(c.op==2)return c.mask==0&&c.pumpMs==0&&c.holdMs==0&&c.releaseMs==0&&c.repeats==0;
+ if(c.op==8)return c.mask<=63&&c.pumpMs==0&&c.holdMs==0&&c.releaseMs==0&&c.repeats==0;
  if(c.op==3)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&c.pumpMs<=2&&c.holdMs<=2&&c.releaseMs==0&&c.repeats==0;
  if(c.op==4)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&c.releaseMs==0&&c.repeats==1;
  if(c.op==5)return c.aux<=2;
@@ -24,11 +25,18 @@ inline bool decodeCommand(const uint8_t*p,size_t n,Command&c){
  return true;
 }
 #include "HubController.h"
-inline Reply applyCommand(HubController&controller,const Command&c,uint32_t liveSession,uint32_t currentSession,uint16_t&lastSeq,Reply previous,uint32_t now){
+inline Reply applyCommand(HubController&controller,const Command&c,uint32_t liveSession,uint32_t currentSession,uint16_t&lastSeq,Reply previous,uint32_t now,bool(*saveChannels)(uint8_t)=nullptr){
  if(!c.session || c.session!=liveSession || c.session!=currentSession || c.seq<=lastSeq)return previous;
  lastSeq=c.seq;
  if(c.op==2){controller.stop();return Reply::Stopped;}
  if(now-c.receivedAt>250)return Reply::Expired;
+ if(c.op==8){
+   if(c.aux||c.pumpMs||c.holdMs||c.releaseMs||c.repeats)return Reply::Invalid;
+   const uint8_t old=controller.enabledMask();const auto result=controller.setEnabledChannels(c.mask,now);
+   if(result!=Reply::Accepted)return result;
+   if(old!=c.mask&&saveChannels&&!saveChannels(c.mask)){controller.setEnabledChannels(old,now);return Reply::StorageFailed;}
+   return Reply::Accepted;
+ }
  if(c.op==5)return controller.configureStage(c.aux,c.mask,c.pumpMs,c.holdMs,c.releaseMs,c.repeats,now);
  if(c.op==6){if(c.holdMs||c.releaseMs)return Reply::Invalid;return controller.beginRoutine(c.aux,c.mask,c.pumpMs,c.repeats,now);}
  if(c.op==7){if(c.releaseMs||c.repeats)return Reply::Invalid;return controller.configureTargets(c.aux,c.mask,c.pumpMs,c.holdMs,now);}
@@ -52,6 +60,8 @@ inline void encodeDetail(uint8_t*b,const HubController&c,uint8_t ch,uint32_t ses
 inline void encodeControlSummary(uint8_t*b,const HubController&c,uint32_t session,uint16_t seq,Reply reply){
  uint16_t outputs=0;for(uint8_t ch=0;ch<6;++ch){if(c.pump(ch))outputs|=1<<(2*ch);if(c.valve(ch))outputs|=2<<(2*ch);}
  encodeSummary(b,c,session,seq,reply,0,outputs,65535);
+ // v9 reuses the retired HX710 age field: channel mask + revision marker.
+ b[14]=c.enabledMask();b[15]=0xa9;
  b[19]=c.routineFault?0x80|(c.routineFault<<3)|c.routineFaultChannel:c.routine.active?c.routine.kind:0;
 }
 inline void encodeRoutine(uint8_t*b,const HubController&c,uint32_t session,uint32_t now){
