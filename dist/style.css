@@ -34,3 +34,5 @@ main{padding-top:8px}.connection{margin-top:0;padding-top:12px}.connection p:emp
 .routine-live[hidden]{display:none}
 
 .channel-options{margin:22px 0;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.channel-options h3{font-size:16px;margin:0}.enabled-choices{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.enabled-choice{display:flex;align-items:center;gap:8px;min-height:48px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px;background:#fffefa}.enabled-choice input{width:18px;height:18px;accent-color:#65517b}.enabled-choice:has(input:checked){border-color:#9e8dae;background:#eee9f3}.channel[hidden],.channel-mapper button[hidden]{display:none!important}#futureSection{display:none!important}
+
+.sensor-setup{margin:24px 0;padding-top:20px;border-top:1px solid var(--line)}.sensor-setup h3{font-size:18px;margin:0}.calibration-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.calibration-actions button{min-height:48px;flex:1}.sensor-setup .calibration-card{margin:14px 0}.sensor-setup .section-top{margin-top:20px}

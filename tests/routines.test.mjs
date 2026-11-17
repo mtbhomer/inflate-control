@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {defaultRoutines,cleanRoutines,buildRoutine,RoutinePreview,validCalibration,percentReading,targetRaw,cleanCalibration} from '../dist/routines.mjs';
+import {defaultRoutines,cleanRoutines,buildRoutine,RoutinePreview} from '../dist/routines.mjs';
 import {decodeInfo,decodeStatus,encodeCommand} from '../dist/protocol.mjs';
 import {HubBLE} from '../dist/ble.mjs';
 const info={mask:63,session:42,minPump:50,maxPump:2000,maxHold:10000,maxRelease:10000,testControls:true,routines:true};
@@ -18,15 +18,12 @@ test('configuration sends every zone before one atomic routine start',async()=>{
 test('Stop during routine setup prevents all remaining configuration and start writes',async()=>{const h=fake(),ops=[];let stopped;h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes),op=v.getUint8(1);ops.push(op);h.status(summary(v.getUint16(4,true),op===2?6:1));if(op===5)stopped=h.command(2);}};await assert.rejects(h.startRoutine(buildRoutine('scan',mapped().scan)),/cancelled/);await stopped;assert.deepEqual(ops,[5,2]);});
 test('rejected zone configuration never sends a routine start',async()=>{const h=fake(),ops=[];h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes);ops.push(v.getUint8(1));h.status(summary(v.getUint16(4,true),4));}};await assert.rejects(h.startRoutine(buildRoutine('scan',mapped().scan)),/did not accept/);assert.deepEqual(ops,[5]);});
 
-test('sensor percentages require explicit target and valid per-channel reference points',()=>{
+test('sensor-range targets use nominal millivolts and each channel maximum',()=>{
  const d=mapped(),z=d.breathing.zones.front;z.mode='sensor';z.mask=3;
- const refs=[{zero:200,reference:2200},{zero:300,reference:3300}];
- assert.throws(()=>buildRoutine('breathing',d.breathing,63,refs),/Set front/);
- z.target=50;assert.deepEqual(buildRoutine('breathing',d.breathing,63,refs).stages[0].targets,[1200,1800]);
- assert.throws(()=>buildRoutine('breathing',d.breathing),/CH0/);
- assert.equal(percentReading(1200,refs[0]),50);assert.equal(targetRaw(100,refs[1]),3300);
- for(const bad of [{zero:0,reference:2000},{zero:200,reference:4095},{zero:200,reference:220},{zero:200,reference:100}])assert.equal(validCalibration(bad),false);
- assert.equal(cleanCalibration([{zero:200,reference:220}])[0].reference,null);
+ const options=[{maximum:12},{maximum:8}];assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/Set front/);
+ z.target=8;const p=buildRoutine('breathing',d.breathing,63,options);assert.deepEqual(p.stages[0].targets,[400,400]);assert.equal(p.targetUnit,'millivolts');
+ z.target=9;assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/CH1.*8% maximum/);
+ z.target=0.1;assert.deepEqual(buildRoutine('breathing',d.breathing,63,options).stages[0].targets,[203,203]);assert.throws(()=>buildRoutine('breathing',d.breathing),/CH0/);
 });
 test('target packets and fault markers reject malformed values',()=>{
  const v=new DataView(encodeCommand({op:7,mask:3,aux:0,pumpMs:1200,holdMs:1800,releaseMs:0,repeats:0,seq:1,session:42},info));assert.equal(v.getUint16(8,true),1800);
@@ -35,7 +32,7 @@ test('target packets and fault markers reject malformed values',()=>{
 });
 test('preview repeats cues within a zone and independently stops paired pumps',()=>{
  const d=mapped(),z=d.breathing.zones.front;Object.assign(z,{mask:3,mode:'sensor',target:50,pump:1000,hold:200,release:500,window:5000});d.breathing.settle=0;
- const p=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{zero:264,reference:3000},{zero:264,reference:3000}]),0);
+ const p=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{maximum:100},{maximum:100}]),0);
  p.tick(100);assert.equal(p.tick(500).runs[0].phase,3);assert.equal(p.tick(500).runs[1].phase,2);assert.equal(p.tick(560).routine.phase,4);assert.equal(p.tick(760).routine.phase,5);assert.equal(p.tick(1260).routine.pulse,2);assert.equal(p.tick(5000).complete,true);
- z.pump=100;const q=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{zero:264,reference:3000},{zero:264,reference:3000}]),0);q.tick(100);assert.equal(q.tick(200).fault,2);assert.equal(q.tick(200).routine.routineKind,0);
+ z.pump=100;const q=new RoutinePreview(buildRoutine('breathing',d.breathing,63,[{maximum:100},{maximum:100}]),0);q.tick(100);assert.equal(q.tick(200).fault,2);assert.equal(q.tick(200).routine.routineKind,0);
 });

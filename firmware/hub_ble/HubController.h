@@ -8,9 +8,10 @@ struct Run {
  uint16_t pumpMs=1000,holdMs=1000,releaseMs=1000,repeats=1,cycle=0;
  uint32_t started=0;
  bool manualPump=false,manualValve=false;
+ bool calibration=false;
  uint32_t pumpStarted=0,valveStarted=0;
 };
-struct SensorFeedback {uint16_t raw=0;uint32_t sampledAt=0;uint8_t limits=0;bool available=false;};
+struct SensorFeedback {uint16_t raw=0;uint32_t sampledAt=0;uint8_t limits=0;bool available=false;uint16_t millivolts=0;};
 struct RoutineStage {uint8_t mask=0;uint16_t pumpMs=1000,holdMs=1000,releaseMs=2000,windowMs=30000;uint16_t targets[6]={};bool ready=false;};
 struct RoutineRun {
  bool active=false,settling=false;
@@ -67,7 +68,7 @@ class HubController {
     // Group start is atomic: a busy member rejects the entire request.
     if(mask&activeMask())return Reply::Busy;
     for(uint8_t ch=0;ch<6;++ch)if(mask&(1<<ch)){
-      auto&r=runs[ch];r.phase=Phase::Select;r.group=mask;r.pumpMs=pump;r.holdMs=hold;r.releaseMs=release;r.repeats=repeats;r.cycle=1;r.started=now;
+      auto&r=runs[ch];r.calibration=false;r.phase=Phase::Select;r.group=mask;r.pumpMs=pump;r.holdMs=hold;r.releaseMs=release;r.repeats=repeats;r.cycle=1;r.started=now;
     }
     return Reply::Accepted;
   }
@@ -84,7 +85,7 @@ class HubController {
     // An unchanged ON state never renews its timer when the other switch changes.
     if(pumpOn&&!r.manualPump)r.pumpStarted=now;
     if(valveOn&&!r.manualValve)r.valveStarted=now;
-    r.manualPump=pumpOn;r.manualValve=valveOn;r.group=mask;r.cycle=1;
+    r.calibration=false;r.manualPump=pumpOn;r.manualValve=valveOn;r.group=mask;r.cycle=1;
     r.pumpMs=MAX_PUMP;r.holdMs=MAX_HOLD;r.releaseMs=0;r.repeats=1;
     r.phase=pumpOn||valveOn?Phase::Manual:Phase::Off;
     testChannel=pumpOn||valveOn?int8_t(ch):-1;
@@ -97,6 +98,17 @@ class HubController {
     const auto result=start(mask,pump,hold,0,1,now);
     if(result==Reply::Accepted){testChannel=0;while(!(mask&(1<<testChannel)))++testChannel;}
     return result;
+  }
+  bool calibrating()const{return testChannel>=0&&runs[testChannel].calibration&&runs[testChannel].phase!=Phase::Off;}
+  Reply calibrationPulse(uint8_t mask,uint16_t duration,uint32_t now){
+    update(now);
+    if(!mask||mask>63||(mask&(mask-1))||(duration!=100&&duration!=1000))return Reply::Invalid;
+    if(mask&~enabled)return Reply::Disabled;
+    unsigned ch=0;while(!(mask&(1<<ch)))++ch;
+    if(routine.active||(activeMask()&~mask)||(runs[ch].phase!=Phase::Off&&!(calibrating()&&runs[ch].phase==Phase::Hold)))return Reply::Busy;
+    clearStagedRoutine();routineFault=0;
+    auto&r=runs[ch];r=Run{};r.calibration=true;r.group=mask;r.pumpMs=duration;r.holdMs=MAX_HOLD;r.releaseMs=0;r.started=now;r.cycle=1;r.phase=Phase::Select;testChannel=ch;
+    return Reply::Accepted;
   }
   Reply configureStage(uint8_t index,uint8_t mask,uint16_t pump,uint16_t hold,uint16_t release,uint16_t window,uint32_t now){
     update(now);
@@ -113,7 +125,7 @@ class HubController {
   Reply configureTargets(uint8_t index,uint8_t mask,uint16_t first,uint16_t second,uint32_t now){
     update(now);
     if(activeMask()||routine.active){stagedCount=0;return Reply::Busy;}
-    if(index>=stagedCount||index+1!=stagedCount||now-stagedAt>5000||mask!=staged[index].mask||first>4094||second>4094){stagedCount=0;return Reply::Invalid;}
+    if(index>=stagedCount||index+1!=stagedCount||now-stagedAt>5000||mask!=staged[index].mask||first>2700||second>2700||(first&&first<=200)||(second&&second<=200)){stagedCount=0;return Reply::Invalid;}
     auto&s=staged[index];unsigned n=0;for(unsigned ch=0;ch<6;++ch)if(mask&(1<<ch))s.targets[ch]=n++==0?first:second;
     if((n==1&&second)||(n==2&&bool(first)!=bool(second))){stagedCount=0;return Reply::Invalid;}
     s.ready=true;stagedAt=now;return Reply::Accepted;
@@ -199,10 +211,10 @@ class HubController {
     const uint32_t elapsed=now-routine.phaseStarted;
     if(routine.phase==2&&elapsed>=LEAD){
       routine.pumpMask=s.mask;
-      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].raw>=s.targets[ch])routine.pumpMask&=~(1<<ch);
+      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].millivolts>=s.targets[ch])routine.pumpMask&=~(1<<ch);
       setRoutinePhase(routine.pumpMask?3:4,now);
     }else if(routine.phase==3){
-      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].raw>=s.targets[ch])routine.pumpMask&=~(1<<ch);
+      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].millivolts>=s.targets[ch])routine.pumpMask&=~(1<<ch);
       if(!routine.pumpMask)setRoutinePhase(4,now);
       else if(elapsed>=s.pumpMs){
         for(unsigned ch=0;ch<6;++ch)if((routine.pumpMask&(1<<ch))&&s.targets[ch]){abortRoutine(2,ch);return;}

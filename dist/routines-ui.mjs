@@ -1,14 +1,15 @@
-import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=9';
-import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine,validCalibration,cleanCalibration,percentReading} from './routines.mjs?v=9';
-import {analogReading} from './sensor.mjs?v=9';
+import {SENSOR_PROFILE,sensorPercent,validMaximum,cleanSensorOptions} from './sensor-profile.mjs?v=10';
+import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=10';
+import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine} from './routines.mjs?v=10';
+import {analogReading} from './sensor.mjs?v=10';
 const $=id=>document.getElementById(id);
 const text=(id,v)=>{if($(id).textContent!==v)$(id).textContent=v;};
 const seconds=ms=>(ms/1000).toFixed(1).replace(/\.0$/,'');
 const input=(id,label,value,min,max,step=1)=>`<label class="routine-field" for="${id}"><span>${label}</span><div class="number-field"><input id="${id}" type="number" inputmode="decimal" required min="${min}" max="${max}" step="${step}" value="${value}"><span>s</span></div></label>`;
 export class RoutineUI{
- constructor({context,start,changed}){
-  this.context=context;this.start=start;this.changed=changed;this.data=defaultRoutines();this.calibration=cleanCalibration(null);this.demoCalibration=Array.from({length:6},()=>({zero:264,reference:3000}));
-  try{this.savedCalibration=JSON.parse(localStorage.getItem('inflate.calibration.v1'));}catch{}
+ constructor({context,start,changed,pulse=()=>{}}){
+  this.context=context;this.start=start;this.changed=changed;this.data=defaultRoutines();this.pulse=pulse;this.calibration=cleanSensorOptions(null);this.demoCalibration=Array.from({length:6},()=>({maximum:20}));this.setupChannel=0;
+  try{this.savedCalibration=JSON.parse(localStorage.getItem('inflate.sensor-options.v1'));if(typeof this.savedCalibration?.deviceId==='string')this.setDevice(this.savedCalibration.deviceId);}catch{}
   try{this.data=cleanRoutines(JSON.parse(localStorage.getItem('inflate.routines.v1')));}catch{}
   this.mapKind='breathing';this.zone='front';this.editKind=this.data.selected;this.editZone=this.editKind==='scan'?'upper':'front';this.lastCue='';this.armed=false;this.wasActive=false;
   this.speechAvailable=Boolean(globalThis.speechSynthesis&&globalThis.SpeechSynthesisUtterance);this.player=new GuidancePlayer();
@@ -21,14 +22,14 @@ export class RoutineUI{
     <div class="routine-live" aria-live="polite"><span id="routine-live-label">Ready to begin</span><strong id="routine-live-phase">Map your channels</strong><p id="routine-cue">Select a zone to get started.</p><div class="routine-progress"><span id="routine-progress-fill"></span></div></div>
    </div><div class="zone-editor"><div class="section-top"><h3 id="zone-editor-title">Front</h3><span id="zone-editor-code" class="quiet">D</span></div><p class="mapping-hint">Assign the connected channel. Select two to inflate a pair together.</p><div id="channel-mapper" class="channel-mapper" role="group" aria-label="Channels for selected zone">${Array.from({length:6},(_,ch)=>`<button id="assign-${ch}" aria-pressed="false">CH${ch}<small id="assign-note-${ch}">Available</small></button>`).join('')}</div><p id="mapping-message" class="mapping-message" role="status"></p>
     <label class="routine-field" for="zone-mode"><span>Inflation control</span><select id="zone-mode"><option value="sensor">Sensor target</option><option value="timed">Timed inflation</option></select></label>
-    <label id="target-field" class="routine-field target-field" for="zone-target"><span>Target level</span><div class="number-field"><input id="zone-target" type="number" inputmode="decimal" min="1" max="100" step="1" placeholder="Set target"><span>%</span></div></label>
+    <label id="target-field" class="routine-field target-field" for="zone-target"><span>Target · sensor range</span><div class="number-field"><input id="zone-target" type="number" inputmode="decimal" min="0.1" max="100" step="0.1" placeholder="Set target"><span>%</span></div></label>
     <div class="routine-timing-grid">${input('zone-pump','Pump limit / time',2,.05,2,.05)}${input('zone-hold','Hold before release',1,0,10,.1)}${input('zone-release','Release between cues',2,.5,10,.1)}${input('zone-window','Time in this zone',30,1,60,.1)}</div><p id="zone-timing-note" class="footnote"></p>
-    <section class="zone-sensors" aria-label="Selected zone sensors"><div class="section-top"><h4>Reference levels</h4><span id="calibration-mode" class="quiet">Per channel</span></div><div id="zone-sensor-readings"></div><p class="footnote">0% = vented. 100% = your recorded reference inflation. This is a relative sensor level, not air volume or pressure. Use the controls in Device to inflate and hold a reference, then record it beside that channel. Recalibrate if you move or replace a sensor.</p><p id="calibration-message" class="mapping-message" role="status"></p></section>
+    <section class="zone-sensors" aria-label="Selected zone sensors"><div class="section-top"><h4>Sensor readings</h4><span id="calibration-mode" class="quiet">Sensor range</span></div><div id="zone-sensor-readings"></div><p class="footnote">Percentages use the sensor’s nominal 0.2–2.7 V range. Channel maximums and inflation increments are in Device → Sensor setup.</p><p id="calibration-message" class="mapping-message" role="status"></p></section>
    </div></div>
    <section class="routine-session"><div class="section-top"><h3>Session</h3><button id="routine-short" class="text-button">Short test timings</button></div><div class="session-grid">${input('routine-settle','Start delay',5,0,60)}<label class="routine-field" for="routine-repeat"><span>Repeat</span><select id="routine-repeat"><option value="once">Once</option><option value="count">Set rounds</option><option value="forever">Until Stop</option></select></label><label id="routine-count-label" class="routine-field" for="routine-count"><span>Total rounds</span><div class="number-field"><input id="routine-count" type="number" inputmode="numeric" min="1" max="999" step="1" value="3"></div></label></div>
     <div class="voice-option"><label><input id="routine-voice" type="checkbox"> Spoken guidance</label><button id="voice-preview" class="text-button">Preview voice</button></div><div class="session-grid"><label class="routine-field" for="voice-choice"><span>Guidance voice</span><select id="voice-choice"><option value="sarah">Sarah · prepared audio</option><option value="lily">Lily · prepared audio</option><option value="device">Device voice</option></select></label><label class="routine-field" for="voice-rate"><span>Speaking speed</span><select id="voice-rate"><option value="0.85">Slower · 0.85×</option><option value="1">Natural · 1×</option><option value="1.15">Faster · 1.15×</option></select></label></div><label id="device-voice-label" class="routine-field" for="device-voice" hidden><span>Voice on this device</span><select id="device-voice"></select></label><p id="voice-note" class="footnote"></p>
     <div id="routine-zone-summary" class="routine-zone-summary"></div><div id="routine-timeline" class="routine-timeline" aria-label="Routine order"></div><p id="routine-estimate" class="footnote"></p>
-    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=9" download>Download v9</a>. Your existing controls are under Device → Channel tests.</p>
+    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=10" download>Download v10</a>. Your existing controls are under Device → Channel tests.</p>
     <button id="routine-start" class="routine-start" disabled>Start breathing routine <span aria-hidden="true">→</span></button><p class="footnote">Keep Bluefy open for live guidance. Stop or Bluetooth disconnection releases the routine. Sensor targets stop each pump; the 2 s limit stops and releases the routine if a target is not reached.</p>
    </section>`;
   $('zones').innerHTML='<div class="routine-intro"><p class="eyebrow">MAP & ADJUST</p><h2>Zone mapping</h2><p id="zone-routine-title"></p><div class="sequence-picker" role="group" aria-label="Vest side"><button id="map-front" aria-pressed="true">Front</button><button id="map-back" aria-pressed="false">Back</button></div></div>';
@@ -46,7 +47,7 @@ export class RoutineUI{
   for(const button of document.querySelectorAll('[data-config-kind]'))button.addEventListener('click',()=>{if(this.locked())return;this.editKind=button.dataset.configKind;this.editZone=this.editKind==='scan'?'upper':'front';this.fill();this.changed();});
   $('sequence-zone-picker').addEventListener('click',e=>{const b=e.target.closest('[data-config-zone]');if(!b||this.locked())return;this.editZone=b.dataset.configZone;this.fill();this.changed();});
 
-  document.addEventListener('click',e=>{const b=e.target.closest('[data-capture]');if(b)this.capture(Number(b.dataset.channel),b.dataset.capture);});
+  this.mountSensorSetup();
   $('zone-mode').addEventListener('change',()=>{this.editCfg.zones[this.editZone].mode=$('zone-mode').value;this.save();this.changed();});
   $('zone-target').addEventListener('input',()=>{this.editCfg.zones[this.editZone].target=$('zone-target').value===''?null:Number($('zone-target').value);this.save();this.changed();});
   for(const kind of ['breathing','scan'])$(`routine-${kind}`).addEventListener('click',()=>{if(this.locked())return;this.data.selected=kind;this.save();this.changed();});
@@ -66,35 +67,51 @@ export class RoutineUI{
   $('device-voice').addEventListener('change',()=>{this.data.browserVoice=$('device-voice').value;this.save();});
   const refreshVoices=()=>{if(!this.speechAvailable)return;const voices=speechSynthesis.getVoices().filter(v=>/^en\b/.test(v.lang));$('device-voice').replaceChildren(new Option('Automatic English voice',''),...voices.map(v=>new Option(v.name+' · '+v.lang,v.voiceURI)));$('device-voice').value=this.data.browserVoice;};
   refreshVoices();if(this.speechAvailable)speechSynthesis.addEventListener('voiceschanged',refreshVoices);
-  $('routine-start').addEventListener('click',()=>{try{const plan=buildRoutine(this.data.selected,this.runCfg,this.enabledMask,this.refs);this.start(plan);}catch(e){text('routine-validation',e.message);}});
+  $('routine-start').addEventListener('click',()=>{try{const plan=buildRoutine(this.data.selected,this.runCfg,this.enabledMask,this.refs);if(plan.stages.some(s=>s.targets.some(Boolean))&&!this.context().info?.sensorRangeTargets)throw Error('Install firmware v10 for sensor-range targets.');this.start(plan);}catch(e){text('routine-validation',e.message);}});
 
   document.addEventListener('visibilitychange',()=>{if(document.hidden)this.cancelVoice();else if(this.context().routineKind&&this.data.spoken){this.armed=true;this.lastCue='';}});
   this.fill();
  }
  get refs(){return this.context().demo?this.demoCalibration:this.calibration;}
  reading(ch){const c=this.context(),a=c.analogStates[ch];return c.fresh?analogReading(a?.sample,c.now-(a?.received??0)):null;}
- capture(ch,key){
-  const c=this.context(),r=this.reading(ch);if(!Number.isInteger(ch)||ch<0||ch>5||!['zero','reference'].includes(key)||!(this.enabledMask&(1<<ch))||c.routineKind||c.pending||!r||r.low||r.high)return;
-  const raw=c.analogStates[ch].sample.raw,ref=this.refs[ch];
-  if(key==='zero'){ref.zero=raw;ref.reference=null;}
-  else if(!Number.isInteger(ref.zero)||raw-ref.zero<32){this.calibrationMessage=`CH${ch}: set vented 0% first, then inflate to a higher reference level.`;this.changed();return;}
-  else ref.reference=raw;
-  if(!c.demo)try{this.savedCalibration={deviceId:this.deviceId,channels:this.calibration};localStorage.setItem('inflate.calibration.v1',JSON.stringify({deviceId:this.deviceId,channels:this.calibration}));}catch{}
-  this.calibrationMessage=`${c.demo?'Preview · ':''}CH${ch} ${key==='zero'?'vented 0% recorded; now record 100%':'reference 100% recorded'}.`;this.changed();
+ saveSensorOptions(){if(!this.context().demo&&this.deviceId)try{this.savedCalibration={deviceId:this.deviceId,channels:this.calibration};localStorage.setItem('inflate.sensor-options.v1',JSON.stringify(this.savedCalibration));}catch{}}
+ capture(ch){
+  const c=this.context(),r=this.reading(ch),pct=r?sensorPercent(c.analogStates[ch].sample.millivolts):null;
+  if(!(this.enabledMask&(1<<ch))||c.routineKind||c.pending||c.outputs?.[ch]?.pump||!r||r.low||r.high||!validMaximum(pct)||(!c.demo&&!this.deviceId))return;
+  // Round down to the displayed 0.1% so the stored target never exceeds this sample.
+  const maximum=Math.floor(pct*10+1e-7)/10;if(!validMaximum(maximum))return;
+  this.refs[ch].maximum=maximum;this.saveSensorOptions();this.setupKey=null;
+  this.calibrationMessage=`${c.demo?'Preview · ':''}CH${ch} maximum saved at ${maximum}% of sensor range.`;this.changed();
  }
- setDevice(id){this.deviceId=id;this.calibration=this.savedCalibration?.deviceId===id?cleanCalibration(this.savedCalibration.channels):cleanCalibration(null);this.calibrationMessage='';}
+ setDevice(id){this.deviceId=id;this.calibration=this.savedCalibration?.deviceId===id?cleanSensorOptions(this.savedCalibration.channels):cleanSensorOptions(null);this.calibrationMessage='';this.setupKey=null;}
  renderSensors(node,chs){
-  const signature=chs.join(',');
-  if(node.dataset.channels!==signature){node.dataset.channels=signature;node.innerHTML=chs.map(ch=>`<div class="calibration-card" data-sensor="${ch}"><div class="zone-sensor"><span>CH${ch}</span><strong data-level>—</strong><span data-state>Waiting</span><meter min="0" max="100" value="0" aria-label="CH${ch} reference level"></meter></div><div class="capture-buttons"><button class="subtle" data-channel="${ch}" data-capture="zero">Record 0%</button><button class="subtle" data-channel="${ch}" data-capture="reference">Record 100%</button></div><small data-note></small></div>`).join('')||'<p class="footnote">Assign channels to record their reference levels.</p>';}
-  const c=this.context();
-  for(const ch of chs){const n=node.querySelector(`[data-sensor="${ch}"]`),r=this.reading(ch),cal=this.refs[ch],pct=r?percentReading(c.analogStates[ch].sample.raw,cal):null;
-   n.querySelector('[data-level]').textContent=pct===null?'—':pct.toFixed(1)+'%';
-   n.querySelector('[data-state]').textContent=!r?'Waiting for reading':r.high?'ADC ceiling':r.low?'ADC floor':!validCalibration(cal)?'Record two reference points':pct>100?'Above reference':'of recorded reference';
-   n.querySelector('meter').value=Math.max(0,Math.min(100,pct??0));
-   const disabled=Boolean(c.routineKind||c.pending||!r||r.high||r.low);
-   n.querySelector('[data-capture="zero"]').disabled=disabled;n.querySelector('[data-capture="reference"]').disabled=disabled||!cal?.zero;
-   n.querySelector('[data-note]').textContent=`${cal?.zero?'0% saved':'Vent fully, then record 0%'} · ${validCalibration(cal)?'100% saved':'Reference needed'}`;
+  const signature=chs.join(',');if(node.dataset.channels!==signature){node.dataset.channels=signature;node.innerHTML=chs.map(ch=>`<div class="calibration-card" data-sensor="${ch}"><div class="zone-sensor"><span>CH${ch}</span><strong data-level>—</strong><span data-state>Waiting</span><meter min="0" max="100" value="0" aria-label="CH${ch} sensor range"></meter></div><small data-note></small></div>`).join('')||'<p class="footnote">Assign an enabled channel to see its reading.</p>';}
+  const c=this.context();for(const ch of chs){const n=node.querySelector(`[data-sensor="${ch}"]`),r=this.reading(ch),pct=r?sensorPercent(c.analogStates[ch].sample.millivolts):null,max=this.refs[ch]?.maximum;
+   n.querySelector('[data-level]').textContent=pct===null?'—':pct.toFixed(1)+'%';n.querySelector('[data-state]').textContent=!r?'Waiting for reading':r.high?'ADC ceiling':r.low?'ADC floor':pct>100?'Above sensor range':pct<0?'Below nominal zero':validMaximum(max)&&pct>max?'Above channel maximum':'of sensor range';
+   n.querySelector('meter').value=Math.max(0,Math.min(100,pct??0));n.querySelector('[data-note]').textContent=validMaximum(max)?`Channel maximum ${max}%`:'Set channel maximum in Device';
   }
+ }
+ mountSensorSetup(){
+  const host=$('sensor-setup');if(!host)return;
+  host.innerHTML=`<div class="section-top"><h3>Sensor setup</h3><span class="quiet">Per channel</span></div><p class="footnote">${SENSOR_PROFILE.name} · nominal 0.2–2.7 V = 0–100%. No manual floor or ceiling. This profile assumes the 3.3 V sensor variant.</p><label class="routine-field">Channel<select id="setup-channel" aria-label="Sensor setup channel"></select></label><div id="sensor-setup-body"><label class="routine-field"><span>Maximum exercise target</span><div class="number-field"><input id="channel-maximum" type="number" inputmode="decimal" min="0.1" max="100" step="0.1" placeholder="Set maximum"><span>%</span></div></label><button id="save-channel-maximum" class="subtle">Save maximum</button><p class="footnote">Exercise targets stay at or below this value. Overshoot does not cancel the exercise.</p><div class="section-top"><h4>Find the full level</h4><span id="calibration-state" class="quiet"></span></div><div id="setup-reading"></div><div class="calibration-actions"><button id="calibrate-small" class="subtle">Add air · 0.1 s</button><button id="calibrate-large" class="subtle">Add air · 1 s</button><button id="calibrate-release" class="stop-control" data-stop>Release</button></div><p class="footnote">Holds between bursts; releases after 10 s. Manual bursts ignore the saved maximum. Release vents all channels.</p><button id="capture-channel-maximum" class="run">Save current level as maximum</button><p id="sensor-setup-message" class="mapping-message" role="status"></p></div><p id="sensor-setup-empty" class="footnote" hidden>Enable a channel above to configure its sensor.</p>`;
+  $('setup-channel').addEventListener('change',()=>{this.setupChannel=Number($('setup-channel').value);this.setupKey=null;this.changed();});
+  $('channel-maximum').addEventListener('input',()=>this.changed());
+  $('save-channel-maximum').addEventListener('click',()=>{const c=this.context(),value=$('channel-maximum').valueAsNumber??Number($('channel-maximum').value);if(c.routineKind||c.pending||c.busy||!validMaximum(value)||!(this.enabledMask&(1<<this.setupChannel))||(!c.demo&&!this.deviceId))return;this.refs[this.setupChannel].maximum=value;this.saveSensorOptions();this.calibrationMessage=`CH${this.setupChannel} maximum saved at ${value}%.`;this.changed();});
+  $('capture-channel-maximum').addEventListener('click',()=>this.capture(this.setupChannel));
+  for(const [id,ms] of [['calibrate-small',100],['calibrate-large',1000]])$(id).addEventListener('click',()=>this.pulse(this.setupChannel,ms));
+ }
+ renderSensorSetup(){
+  if(!$('sensor-setup'))return;const c=this.context(),enabled=channels(this.enabledMask);if(!enabled.includes(this.setupChannel))this.setupChannel=enabled[0]??0;
+  const signature=enabled.join(',');if($('setup-channel').dataset.channels!==signature){$('setup-channel').dataset.channels=signature;$('setup-channel').innerHTML=enabled.map(ch=>`<option value="${ch}">CH${ch}</option>`).join('');}$('setup-channel').value=String(this.setupChannel);
+  $('sensor-setup-body').hidden=!enabled.length;$('sensor-setup-empty').hidden=Boolean(enabled.length);$('setup-channel').disabled=Boolean(c.busy)||!enabled.length;
+  const ch=this.setupChannel,key=`${this.deviceId}:${c.demo}:${ch}`;if(this.setupKey!==key){this.setupKey=key;$('channel-maximum').value=this.refs[ch]?.maximum??'';}
+  this.renderSensors($('setup-reading'),enabled.length?[ch]:[]);
+  const idle=!c.active&&!c.routineKind,holding=c.calibrating&&c.phases?.[ch]===3&&c.active===(1<<ch),r=this.reading(ch),validReading=Boolean(r&&!r.high&&!r.low),pct=validReading?sensorPercent(c.analogStates[ch].sample.millivolts):null;
+  const canPulse=enabled.length&&c.fresh&&c.info?.calibrationPulses&&!c.pending&&!c.stopPending&&(idle||holding)&&validReading;
+  $('calibrate-small').disabled=!canPulse;$('calibrate-large').disabled=!canPulse;$('calibrate-release').disabled=!c.online||c.stopPending;
+  $('capture-channel-maximum').disabled=!validReading||!validMaximum(pct)||c.pending||c.routineKind||Boolean(c.outputs?.[ch]?.pump)||!(idle||holding);
+  $('channel-maximum').disabled=Boolean(c.busy);$('save-channel-maximum').disabled=Boolean(c.busy)||!validMaximum(Number($('channel-maximum').value))||(!c.demo&&!this.deviceId);
+  text('calibration-state',!c.online?'Connect to add air':!c.info?.calibrationPulses?'Firmware v10 required':holding?'Holding · ready for another burst':c.calibrating?'Adding air…':'Ready');text('sensor-setup-message',this.calibrationMessage||'');
  }
  get enabledMask(){const c=this.context();return c.enabledMask??c.info?.mask??63;}
  get cfg(){return this.data[this.mapKind];}
@@ -139,8 +156,8 @@ export class RoutineUI{
   $('target-field').hidden=editZ.mode==='timed';
   text('zone-timing-note',`Repeat inflate → hold → release throughout this ${seconds(editZ.window)} s zone. A new cue starts only when a full cycle fits. ${editZ.mode==='sensor'?'Each pump stops at its target, with a '+seconds(editZ.pump)+' s maximum.':'Timed pumping does not use sensor feedback.'}`);
   this.renderSensors($('zone-sensor-readings'),channels(z.mask));
-  text('calibration-mode',c.demo?'Preview references':'Saved for this hub');text('calibration-message',this.calibrationMessage||'');
-  for(let ch=0;ch<6;ch++){const node=$(`calibration-debug-${ch}`);if(node)this.renderSensors(node,this.enabledMask&(1<<ch)?[ch]:[]);}
+  text('calibration-mode',c.demo?'Preview':'Sensor range');this.renderSensorSetup();text('calibration-message',this.calibrationMessage||'');
+  for(let ch=0;ch<6;ch++){const node=$(`calibration-debug-${ch}`);if(node)node.textContent=this.enabledMask&(1<<ch)?validMaximum(this.refs[ch]?.maximum)?`Maximum exercise target: ${this.refs[ch].maximum}%`:'Set channel maximum in Device → Sensor setup.':'';}
   const canSpeak=this.data.voice!=='device'?Boolean(globalThis.AudioContext||globalThis.webkitAudioContext):this.speechAvailable;
   $('routine-voice').disabled=!canSpeak;$('voice-preview').disabled=!canSpeak||running||c.pending;$('voice-choice').disabled=running;$('voice-rate').disabled=running;$('device-voice').disabled=running;
   $('device-voice-label').hidden=this.data.voice!=='device';
@@ -149,9 +166,9 @@ export class RoutineUI{
   const cfg=this.editCfg,order=editIds.map(id=>`${ZONES[id].name} · ${seconds(cfg.zones[id].window)} s`);text('routine-timeline',[`${seconds(cfg.settle)} s settle`,...order].join(' → '));
   const perRound=editIds.reduce((n,id)=>n+cfg.zones[id].window,0),total=cfg.settle+perRound*(cfg.repeats||1);text('routine-estimate',cfg.repeats?`${cfg.repeats} ${cfg.repeats===1?'round':'rounds'} · about ${seconds(total)} seconds total.`:`Repeats until Stop · ${seconds(perRound)} seconds per round after settling.`);
   const overview=runIds.map(id=>{const a=runCfg.zones[id];return `<div class="zone-overview"><span><b>${ZONES[id].name}</b><small>${channels(a.mask&this.enabledMask).map(ch=>'CH'+ch).join(' + ')||'Assign channels'}</small></span><span><b>${a.mode==='timed'?seconds(a.pump)+' s':a.target===null?'Set target':a.target+'%'}</b><small>${seconds(a.window)} s · repeated cues</small></span></div>`;}).join('');if($('routine-zone-summary').innerHTML!==overview)$('routine-zone-summary').innerHTML=overview;
-  let error='';try{buildRoutine(this.data.selected,runCfg,this.enabledMask,this.refs);}catch(e){error=e.message;}
+  let error='';try{const plan=buildRoutine(this.data.selected,runCfg,this.enabledMask,this.refs);if(c.online&&plan.stages.some(s=>s.targets.some(Boolean))&&!c.info?.sensorRangeTargets)throw Error('Install firmware v10 for sensor-range targets.');}catch(e){error=e.message;}
   const fault=c.routineFault?`CH${c.routineFaultChannel}: ${c.routineFault===2?'target was not reached within the pump limit':'sensor reading is missing, stale or at an ADC endpoint'}. Routine stopped and released. Check the channel before restarting.`:'';
-  text('routine-validation',fault||error||(!c.online?'Connect your hub or try the interface to start.':!c.fresh?'Waiting for fresh hub status.':running?'Routine running. Settings stay locked until it finishes or you press Stop.':c.busy?'Stop the active channel test or pattern first.':'Ready with your saved settings.'));
+  text('routine-validation',fault||error||(!c.online?'Connect your hub or try the interface to start.':!c.fresh?'Waiting for fresh hub status.':running?'Routine running. Settings stay locked until it finishes or you press Stop.':c.busy?'Stop the active channel test or pattern first.':`Ready · ${runCfg.repeats?runCfg.repeats+' round'+(runCfg.repeats===1?'':'s'):'until Stop'} · ${runIds.reduce((n,id)=>n+runCfg.zones[id].window,0)/1000} s per round.`));
   $('routine-upgrade').hidden=!c.online||c.info?.routines;
   $('routine-start').disabled=Boolean(error)||!c.fresh||!c.info?.routines||locked;
   text('routine-start',c.pending?'Sending routine…':running?'Routine running':this.data.selected==='breathing'?'Start breathing →':'Start body scan →');

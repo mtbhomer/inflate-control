@@ -7,7 +7,7 @@
 static Reply timed(HubController&c,unsigned index,unsigned mask,unsigned pump,unsigned hold,unsigned window,uint32_t now){
  auto reply=c.configureStage(index,mask,pump,hold,500,window,now);if(reply!=Reply::Accepted)return reply;return c.configureTargets(index,mask,0,0,now);
 }
-static void feedback(HubController&c,unsigned ch,uint16_t raw,uint32_t now){c.sensors[ch]={raw,now,0,true};}
+static void feedback(HubController&c,unsigned ch,uint16_t raw,uint32_t now){c.sensors[ch]={raw,now,0,true,raw};}
 static void configure(HubController& c,unsigned count,uint32_t now=0){
  for(unsigned i=0;i<count;++i)assert(timed(c,i,3<<(i*2),100,200,1000,now)==Reply::Accepted);
  assert(!c.activeMask()&&!c.routine.active);

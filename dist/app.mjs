@@ -1,9 +1,10 @@
-import {Reconnector} from './reconnect.mjs?v=9';
-import {HubBLE} from './ble.mjs?v=9';
-import {PHASES,REPLIES} from './protocol.mjs?v=9';
-import {sensorRange,validZero,analogReading} from './sensor.mjs?v=9';
-import {RoutineUI} from './routines-ui.mjs?v=9';
-import {RoutinePreview} from './routines.mjs?v=9';
+import {sensorPercent} from './sensor-profile.mjs?v=10';
+import {Reconnector} from './reconnect.mjs?v=10';
+import {HubBLE} from './ble.mjs?v=10';
+import {PHASES,REPLIES} from './protocol.mjs?v=10';
+import {sensorRange,validZero,analogReading} from './sensor.mjs?v=10';
+import {RoutineUI} from './routines-ui.mjs?v=10';
+import {RoutinePreview} from './routines.mjs?v=10';
 const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el.textContent!==value)el.textContent=value;};
 const hub=new HubBLE();
@@ -46,7 +47,7 @@ function renderChannelOptions(fresh){
 function message(text){setText('message',text);$('message').hidden=!text;}
 function fields(id,t){return `<div class="timings"><div class="timing"><label for="pump-${id}">Pump time</label><div class="number-field"><input id="pump-${id}" type="number" required inputmode="decimal" min="0.05" max="2" step="0.05" value="${t.pump/1000}"><span>s</span></div><small>0.05–2 seconds</small></div><div class="timing"><label for="hold-${id}">Hold before release</label><div class="number-field"><input id="hold-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.hold/1000}"><span>s</span></div><small>0–10 seconds</small></div></div><button class="run" id="run-${id}" disabled>Run once</button><button class="stop-control channel-stop" id="stop-${id}" data-stop hidden disabled><span class="stop-icon" aria-hidden="true"></span>Stop all & release</button><details class="pattern-settings" id="pattern-${id}"><summary>Repeat pattern <span aria-hidden="true">＋</span></summary><div class="timings"><div class="timing"><label for="release-${id}">Released between cycles</label><div class="number-field"><input id="release-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.release/1000}"><span>s</span></div><small>0–10 seconds · valve off</small></div><div class="timing"><label for="mode-${id}">Repeat</label><select id="mode-${id}"><option value="count" ${t.mode==='count'?'selected':''}>Set count</option><option value="forever" ${t.mode==='forever'?'selected':''}>Until Stop</option></select><div id="count-field-${id}" class="count-field"><label for="count-${id}">Total cycles</label><div class="number-field"><input id="count-${id}" type="number" required inputmode="numeric" min="1" max="999" step="1" value="${t.count}"></div></div></div></div><p class="footnote" id="repeat-note-${id}"></p><button class="run pattern-run" id="repeat-${id}" disabled>Start pattern</button></details>`;}
 function bindFields(id){for(const key of ['pump','hold','release','count','mode'])$(`${key}-${id}`).addEventListener('change',()=>{saveTimes(id);render();});$(`run-${id}`).addEventListener('click',()=>run(id,false));$(`repeat-${id}`).addEventListener('click',()=>run(id,true));}
-function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor voltage</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=9" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} ADC range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · ADC floor</span><span>100% · ADC ceiling</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">ADC range, not calibrated pressure or inflation. A disconnected input can still produce readings.</p></details></section>`;}
+function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor level</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=10" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} sensor range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · sensor minimum</span><span>100% · sensor maximum</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">Nominal sensor range, not air volume or a pressure safety limit. A disconnected input can still produce readings.</p></details></section>`;}
 function testControls(ch){return `<div class="test-controls" id="test-controls-${ch}"><div class="test-switches">${['pump','valve'].map(role=>`<button type="button" role="switch" aria-checked="false" aria-label="Channel ${ch} ${role}" id="test-${role}-${ch}" class="output-switch"><span>${role==='pump'?'Pump':'Valve'}</span><span class="switch-track" aria-hidden="true"></span><strong id="test-${role}-state-${ch}">Off</strong></button>`).join('')}</div><p class="footnote">Independent switches · pump max 2 s · valve max 10 s.<br>States are commanded outputs; confirm the physical response.</p></div>`;}
 function cards(){for(let ch=0;ch<6;ch++){
  const node=document.createElement('article');node.className='channel';node.id=`channel-${ch}`;
@@ -78,15 +79,15 @@ function renderAnalog(ch,connectionFresh){
  const sample=state.sample,reading=connectionFresh&&supported?analogReading(sample,now-state.received):null;
  el('Upgrade').hidden=!online||supported;
  el('Panel').hidden=online&&info?.hxChannel===ch;
- text('Value',reading?`${reading.volts.toFixed(3)} V`:'—');
+ text('Value',reading?`${sensorPercent(sample.millivolts).toFixed(1)}%`:'—');
  text('State',!online?'Waiting for hub':!supported?'Firmware update':!connectionFresh?'Connection stale':!sample||!(sample.flags&1)?'Waiting for data':!reading?'Stale':reading.high?'ADC CEILING':reading.low?'ADC FLOOR':reading.near?'Near ADC ceiling':demo?'Preview signal':'Live ADC');
  el('Panel').classList.toggle('clipped',Boolean(reading&&(reading.high||reading.low)));
  el('Panel').classList.toggle('near',Boolean(reading?.near));
- el('Fill').style.width=reading?`${reading.percent}%`:'0%';
- el('Meter').setAttribute('aria-valuenow',reading?.percent.toFixed(1)??'0');
- el('Meter').setAttribute('aria-valuetext',reading?`${reading.percent.toFixed(1)} percent of ADC range`:'No current reading');
+ const pct=reading?sensorPercent(sample.millivolts):null;el('Fill').style.width=reading?`${Math.max(0,Math.min(100,pct))}%`:'0%';
+ el('Meter').setAttribute('aria-valuenow',pct===null?'0':Math.max(0,Math.min(100,pct)).toFixed(1));
+ el('Meter').setAttribute('aria-valuetext',reading?`${pct.toFixed(1)} percent of sensor range`:'No current reading');
  text('Age',reading?`${Math.round(sample.age+now-state.received)} ms · CH${ch}`:`CH${ch} · display only`);
- text('Raw',reading?`ADC ${sample.raw} / 4095 · ${reading.percent.toFixed(1)}% of ADC range`:'');
+ text('Raw',reading?`${reading.volts.toFixed(3)} V · ADC ${sample.raw} / 4095`:'');
  const pts=state.history.filter(p=>now-p.t<=30000);let path='';
  pts.forEach((p,i)=>{const x=32+328*(1-(now-p.t)/30000),y=104-Math.max(0,Math.min(3300,p.y))/3300*96;path+=`${!i||p.t-pts[i-1].t>600?'M':'L'}${x.toFixed(1)},${y.toFixed(1)} `;});
  el('ChartLine').setAttribute('d',path);el('ChartEmpty').style.display=pts.length>1?'none':'';
@@ -168,6 +169,15 @@ async function run(id,repeat){
  else{const s=await hub.command(testMode?4:1,mask,t.pump,t.hold,repeat?t.release:0,count);message(REPLIES[s.reply]||'Hub replied.');}}
  catch(e){message(e.message);}finally{pending=false;render();}
 }
+async function calibrationPulse(ch,ms){
+ const mask=1<<ch,holding=info?.calibrationPulses&&status?.calibration&&status.active===mask&&status.phases[ch]===3;
+ if(!(enabledMask()&mask)||!info?.calibrationPulses||!usable()||pending||stopPending||status.routineKind||(status.active&&!holding)||![100,1000].includes(ms))return;
+ const a=analogStates[ch],r=analogReading(a?.sample,performance.now()-(a?.received??0));if(!r||r.high||r.low)return;
+ pending=true;message('');render();
+ try{if(demo){const base=holding?simRuns[ch].calibrationLevel:0;simRuns[ch]={pump:ms,hold:10000,release:0,repeats:1,cycle:1,phase:1,start:performance.now(),group:mask,calibration:true,calibrationBase:base,calibrationLevel:Math.min(1.1,base+ms/10000)};tickDemo();message(`Preview: added ${ms/1000} s of air.`);}
+ else{const result=await hub.command(9,mask,ms,0,0,0);message(result.reply===1?`CH${ch}: ${ms/1000} s burst, then hold.`:REPLIES[result.reply]||'Hub replied.');}}
+ catch(e){message(e.message);}finally{pending=false;render();}
+}
 async function toggleOutput(ch,role){
  if(!(enabledMask()&(1<<ch))||!testMode||!info?.testControls||!usable()||pending||stopPending||status.routineKind||(status.active&~(1<<ch))||![0,5].includes(status.phases[ch]))return;
  const turnOn=!status.outputs?.[ch]?.[role];pending=true;message('');render();
@@ -200,7 +210,7 @@ $('linkToggle').addEventListener('click',()=>{if(pending||status?.routineKind||(
 $('preview').addEventListener('click',()=>{
  if(demo){demo=false;online=false;resetAnalog();info=null;channelDraft=lastChannelView.mask;status=null;routineState=null;simRoutine=null;routines.cancelVoice();history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','');render();return;}
  if(online||connecting)return;
- reconnector.suspend();simFault=0;demo=true;online=true;resetAnalog();info={mask:lastChannelView.mask,availableMask:63,channelSelection:true,firmware:9,testControls:true,routines:true,analogChannels:CHANNELS.filter(ch=>lastChannelView.mask&(1<<ch)),hxChannel:null};channelDraft=info.mask;routineState=null;simRoutine=null;baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','MeditationVest');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
+ reconnector.suspend();simFault=0;demo=true;online=true;resetAnalog();info={mask:lastChannelView.mask,availableMask:63,channelSelection:true,firmware:10,testControls:true,routines:true,sensorRangeTargets:true,calibrationPulses:true,analogChannels:CHANNELS.filter(ch=>lastChannelView.mask&(1<<ch)),hxChannel:null};channelDraft=info.mask;routineState=null;simRoutine=null;baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','MeditationVest');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
 });
 function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).fill(0);let active=0,simAnalog=null;
  if(simRoutine){const snapshot=simRoutine.tick(now);simRuns=snapshot.runs;simAnalog=snapshot.analogRaw;simFault=snapshot.fault;simFaultChannel=snapshot.faultChannel;routineState={...snapshot.routine,received:now};if(snapshot.complete)simRoutine=null;}
@@ -217,15 +227,15 @@ function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).
  const r=simRuns[2],rise=r&&r.phase!==4?(r.phase===1?0:r.phase===2?Math.min(1,(now-r.start-100)/r.pump):1):0;
  const raw=Math.min(8388607,Math.round(1764600+Math.sin(now/950)*90+rise*6624100));
  const outputs=CHANNELS.map(ch=>({pump:phases[ch]===5?simRuns[ch].pumpOn:phases[ch]===2,valve:phases[ch]===5?simRuns[ch].valveOn:[1,2,3].includes(phases[ch])}));
- telemetry({kind:'summary',outputs,active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true,routineKind:routineState?.routineKind??0,routineFault:simFault,routineFaultChannel:simFaultChannel});
+ telemetry({kind:'summary',calibration:simRuns.some(r=>r?.calibration),outputs,active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true,routineKind:routineState?.routineKind??0,routineFault:simFault,routineFaultChannel:simFaultChannel});
  for(const ch of CHANNELS){
   if(!(enabledMask()&(1<<ch)))continue;
-  const a=simRuns[ch],level=a?.phase===5?(a.pumpOn ? .5 : a.valveOn ? .2 : 0):a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
+  const a=simRuns[ch],level=a?.calibration?(a.phase===1?a.calibrationBase:a.phase===2?a.calibrationBase+(a.calibrationLevel-a.calibrationBase)*Math.min(1,(now-a.start-100)/a.pump):a.calibrationLevel):a?.phase===5?(a.pumpOn ? .5 : a.valveOn ? .2 : 0):a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
   const mv=simAnalog?Math.round(simAnalog[ch]/4095*3100):Math.round(200+level*2500+Math.sin(now/800+ch)*3);
   analogTelemetry({kind:'analog',channel:ch,flags:3,raw:simAnalog?.[ch]??Math.round(mv/3100*4095),millivolts:mv,age:20,fresh:true});
  }
 }
-function routineContext(){return {online,demo,info,enabledMask:enabledMask(),fresh:usable(),pending,busy:Boolean(status?.active||status?.routineKind||pending||stopPending),routineKind:status?.routineKind??0,routineFault:status?.routineFault??0,routineFaultChannel:status?.routineFaultChannel??0,routine:routineState,routineFresh:Boolean(routineState&&performance.now()-routineState.received<1000&&routineState.routineKind===status?.routineKind),analogStates,now:performance.now()};}
+function routineContext(){return {online,demo,info,active:status?.active??0,phases:status?.phases??[],outputs:status?.outputs??[],calibrating:Boolean(info?.calibrationPulses&&status?.calibration),stopPending,enabledMask:enabledMask(),fresh:usable(),pending,busy:Boolean(status?.active||status?.routineKind||pending||stopPending),routineKind:status?.routineKind??0,routineFault:status?.routineFault??0,routineFaultChannel:status?.routineFaultChannel??0,routine:routineState,routineFresh:Boolean(routineState&&performance.now()-routineState.received<1000&&routineState.routineKind===status?.routineKind),analogStates,now:performance.now()};}
 async function startRoutine(plan){
  if(!usable()||!info?.routines||pending||stopPending||status.active||status.routineKind)return;
  pending=true;routines.armVoice();message('');render();
@@ -237,7 +247,7 @@ async function startRoutine(plan){
 const reconnector=new Reconnector({bluetooth:navigator.bluetooth,current:()=>hub.device,canAttempt:()=>!online&&!connecting&&!demo&&!document.hidden,connect:async device=>{connecting=true;render();try{await hub.connect(device);}finally{connecting=false;render();}},notice:hint=>setText('reconnect-hint',hint)});
 $('auto-connect').checked=reconnector.enabled;$('auto-connect').addEventListener('change',()=>{reconnector.setEnabled($('auto-connect').checked);setText('reconnect-hint',reconnector.enabled?'Reconnection enabled for your selected hub. First use still needs Connect.':'Automatic reconnection is off.');});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)reconnector.cancel();else reconnector.schedule(0);});
-const routines=new RoutineUI({context:routineContext,start:startRoutine,changed:render});
+const routines=new RoutineUI({context:routineContext,start:startRoutine,pulse:calibrationPulse,changed:render});
 $('enabled-choices').innerHTML=CHANNELS.map(ch=>`<label class="enabled-choice"><input id="enabled-${ch}" type="checkbox" aria-label="Enable channel ${ch}"><span>CH${ch}</span></label>`).join('');
 for(const ch of CHANNELS)$(`enabled-${ch}`).addEventListener('change',()=>{channelDraft=$(`enabled-${ch}`).checked?channelDraft|(1<<ch):channelDraft&~(1<<ch);render();});
 $('apply-channels').addEventListener('click',applyChannels);

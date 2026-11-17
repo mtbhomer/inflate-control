@@ -1,25 +1,22 @@
+import {percentMillivolts,validMaximum} from './sensor-profile.mjs?v=10';
 export const ZONES={front:{name:'Front',code:'D',cue:'Notice gentle contact at the front of your body. Let your breathing stay natural.'},upper:{name:'Upper back',code:'B1 / C1',cue:'Bring attention to your upper back. Notice contact around your shoulders.'},middle:{name:'Middle back',code:'B2 / C2',cue:'Move attention to your middle back. Notice support and sensation.'},lower:{name:'Lower back',code:'LB',cue:'Continue to your lower back. Notice contact and relaxation in this area.'}};
 export const ROUTINE_PHASES=['Ready','Settle in','Selecting zone','Inflating to target','Notice contact','Release','Released · observe'];
 const zone=()=>({mask:0,mode:'sensor',target:null,pump:2000,hold:1000,release:2000,window:30000});
-export function defaultRoutines(){return {selected:'breathing',spoken:false,voice:'sarah',browserVoice:'',rate:1,breathing:{settle:5000,repeats:1,lower:false,zones:{front:zone()}},scan:{settle:30000,repeats:1,lower:true,zones:{upper:zone(),middle:zone(),lower:zone()}}};}
+export function defaultRoutines(){return {targetScale:'sensor-range-v1',selected:'breathing',spoken:false,voice:'sarah',browserVoice:'',rate:1,breathing:{settle:5000,repeats:1,lower:false,zones:{front:zone()}},scan:{settle:30000,repeats:1,lower:true,zones:{upper:zone(),middle:zone(),lower:zone()}}};}
 export function zoneIds(kind,cfg){return kind==='breathing'?['front']:cfg.lower?['upper','middle','lower']:['upper','middle'];}
 export function channels(mask){return Array.from({length:6},(_,ch)=>ch).filter(ch=>mask&(1<<ch));}
 const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max;
-export function validCalibration(c){return integer(c?.zero,1,4093)&&integer(c?.reference,1,4094)&&c.reference-c.zero>=32;}
-export function percentReading(raw,c){return validCalibration(c)?100*(raw-c.zero)/(c.reference-c.zero):null;}
-export function targetRaw(percent,c){if(!validCalibration(c)||!Number.isFinite(percent)||percent<1||percent>100)throw Error('Set a target from 1–100% and record both reference points.');return Math.round(c.zero+(c.reference-c.zero)*percent/100);}
-export function cleanCalibration(saved){return Array.from({length:6},(_,ch)=>{const c=saved?.[ch];return validCalibration(c)?{zero:c.zero,reference:c.reference}:{zero:integer(c?.zero,1,4093)?c.zero:null,reference:null};});}
 export function cleanRoutines(saved){
  const d=defaultRoutines();d.selected=saved?.selected==='scan'?'scan':'breathing';d.spoken=saved?.spoken===true;d.voice=['sarah','lily','device'].includes(saved?.voice)?saved.voice:'sarah';d.browserVoice=typeof saved?.browserVoice==='string'?saved.browserVoice:'';d.rate=Number.isFinite(saved?.rate)&&saved.rate>=.75&&saved.rate<=1.25?saved.rate:1;
  for(const kind of ['breathing','scan']){const c=saved?.[kind],t=d[kind];if(!c)continue;
   if(integer(c.settle,0,60000))t.settle=c.settle;if(integer(c.repeats,0,999))t.repeats=c.repeats;if(kind==='scan')t.lower=c.lower!==false;
   for(const id of Object.keys(t.zones)){const z=c.zones?.[id];if(!z)continue;
    for(const [key,min,max] of [['mask',0,63],['pump',50,2000],['hold',0,10000],['release',500,10000],['window',1000,60000]])if(integer(z[key],min,max))t.zones[id][key]=z[key];
-   if(Number.isFinite(z.target)&&z.target>=1&&z.target<=100)t.zones[id].target=z.target;t.zones[id].mode=z.mode==='timed'?'timed':'sensor';
+   if(saved.targetScale==='sensor-range-v1'&&Number.isFinite(z.target)&&z.target>=0.1&&z.target<=100)t.zones[id].target=z.target;t.zones[id].mode=z.mode==='timed'?'timed':'sensor';
   }
  }return d;
 }
-export function buildRoutine(kind,cfg,enabled=63,calibration=[]){
+export function buildRoutine(kind,cfg,enabled=63,options=[]){
  if(!['breathing','scan'].includes(kind)||!integer(cfg?.settle,0,60000)||!integer(cfg?.repeats,0,999))throw Error('Use a start delay of 0–60 seconds and 1–999 rounds, or Until Stop.');
  let used=0;
  const stages=zoneIds(kind,cfg).map(id=>{
@@ -28,10 +25,10 @@ export function buildRoutine(kind,cfg,enabled=63,calibration=[]){
   if(used&z.mask)throw Error('A channel can belong to only one zone in a routine.');used|=z.mask;
   if(!integer(z.pump,50,2000)||!integer(z.hold,0,10000)||!integer(z.release,500,10000)||!integer(z.window,1000,60000)||z.window<100+z.pump+z.hold+z.release)throw Error(`${label}: the zone duration must fit a full pump, hold and release cycle (including 0.1 s valve lead).`);
   if(!['sensor','timed'].includes(z.mode))throw Error('Choose sensor target or timed inflation.');
-  if(z.mode==='sensor'&&(!Number.isFinite(z.target)||z.target<1||z.target>100))throw Error(`Set ${label.toLowerCase()}'s target from 1–100% in Sequences.`);
-  const targets=channels(z.mask).map(ch=>{if(z.mode==='timed')return 0;if(!validCalibration(calibration[ch]))throw Error(`CH${ch}: record vented 0% and reference 100% in Zones or Device.`);return targetRaw(z.target,calibration[ch]);});
+  if(z.mode==='sensor'&&(!Number.isFinite(z.target)||z.target<0.1||z.target>100))throw Error(`Set ${label.toLowerCase()}'s target from 0.1–100% of the sensor range in Sequences.`);
+  const targets=channels(z.mask).map(ch=>{if(z.mode==='timed')return 0;const max=options[ch]?.maximum;if(!validMaximum(max))throw Error(`CH${ch}: set a channel maximum in Device → Sensor setup.`);if(z.target>max)throw Error(`${label}: target exceeds CH${ch}’s ${max}% maximum. Adjust the target or channel maximum.`);return percentMillivolts(z.target);});
   return {...z,id,targets};
- });return {kind:kind==='breathing'?1:2,settle:cfg.settle,repeats:cfg.repeats,stages};
+ });return {targetUnit:'millivolts',kind:kind==='breathing'?1:2,settle:cfg.settle,repeats:cfg.repeats,stages};
 }
 // A deterministic demonstration of the device state machine, with synthetic sensor feedback.
 export class RoutinePreview{
@@ -58,7 +55,7 @@ export class RoutinePreview{
    const duration=this.phase===1?p.settle:this.phase===2?100:this.phase===3?s.pump:this.phase===4?s.hold:this.phase===5?s.release:s.window;
    routine={...routine,routineKind:p.kind,phase:this.phase,step:this.step,count:p.stages.length,cycle:this.cycle,repeats:p.repeats,remaining:Math.max(0,Math.ceil(duration-(this.phase===6?now-this.stepStart:elapsed))),elapsed:now-this.stepStart,pulse:this.pulse};
    channels(s.mask).forEach((ch,i)=>{
-    const target=s.targets[i]||2200,rise=this.phase===3?Math.min(1,elapsed/(s.targets[i]?400+ch*60:s.pump)):this.phase===4?1:this.phase===5?Math.max(0,1-elapsed/s.release):0;
+    const target=s.targets[i]?Math.round(s.targets[i]/3100*4095):2200,rise=this.phase===3?Math.min(1,elapsed/(s.targets[i]?400+ch*60:s.pump)):this.phase===4?1:this.phase===5?Math.max(0,1-elapsed/s.release):0;
     analogRaw[ch]=Math.round(264+(target-264)*rise);
     if(this.phase>=2&&this.phase<=4)runs[ch]={routineOwned:true,pump:s.pump,hold:s.hold,release:s.release,repeats:1,cycle:this.pulse,phase:this.phase===2?1:this.phase===3&&(this.pumpMask&(1<<ch))?2:3,group:s.mask,remaining:routine.remaining};
    });

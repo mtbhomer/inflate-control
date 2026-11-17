@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v9",
+  "firmware": "MEDITATION VEST BLE v10",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -63,7 +63,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 9,
+  "firmwareRevision": 10,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -113,7 +113,7 @@
     16,
     17
   ],
-  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v9 physical test",
+  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v10 physical test",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -125,7 +125,15 @@
   },
   "sensorDisplayOnly": false,
   "routineSensorControl": {
-    "perChannelCalibratedPercent": true,
+    "percentScale": "nominal sensor full span",
+    "sensorProfile": {
+      "model": "XGZP6847A 3.3 V assumed",
+      "zeroMv": 200,
+      "fullMv": 2700
+    },
+    "targetUnit": "millivolts",
+    "channelMaximums": "per-device browser setting; constrains exercise targets",
+    "over100PercentCancels": false,
     "maxPumpMs": 2000,
     "invalidSensorStops": true,
     "targetTimeoutStops": true,
@@ -133,6 +141,17 @@
     "maxChannelsPerZone": 2,
     "targetsInitiallyBlank": true,
     "timedFallback": true
+  },
+  "calibration": {
+    "incrementsMs": [
+      100,
+      1000
+    ],
+    "valveLeadMs": 100,
+    "holdTimeoutMs": 10000,
+    "singleChannelOnly": true,
+    "disconnectReleases": true,
+    "savedMaximumStopsManualBursts": false
   },
   "channelTest": {
     "oneChannelAtATime": true,
@@ -145,7 +164,7 @@
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
   "previousHubPortTestsUserReportedWorking": true,
-  "v9HardwareTested": false,
+  "v10HardwareTested": false,
   "analogSensors": {
     "channels": [
       0,
@@ -169,16 +188,16 @@
     "averageSamples": 4,
     "samplePeriodMs": 20,
     "nominalChannelNotificationPeriodMs": 300,
-    "display": "relative calibrated percentage for routines; volts and ADC range in Device; no pressure calibration",
+    "display": "nominal 0.2\u20132.7 V sensor-span percentage; volts and ADC in details; no pressure calibration",
     "sensorPresenceDetection": false
   },
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
-    "BleProtocol.h": "9685278123b3d526cf71b4a1abc89a96b296d9cd385cf86adf86f994e929b8a9",
-    "HubController.h": "83d21f0b07f9b3cc80428a374e8d00950d484a8b5740fcb4d01cd1a0956564f9",
+    "BleProtocol.h": "4ddcac127bb314f01fa4fa9efc0dbb1ab3905a7a4c11256cd185d2e599a060c5",
+    "HubController.h": "0225e69df72fb228fbd0c9f5a723fe164b17e61468893dc5208e9151ac4a275f",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
-    "README.md": "7feb76cc4f718e151cc196e2230817491a04b594a369f1b45e0f77b3fe145b77",
-    "hub_ble.ino": "c73b756138573b1648e6f7933d4c83f4b79fb67e4d414f8e4559c8ed390ffb72"
+    "README.md": "fbd1b70e02924374506daa9f6dc1f62416da180a57fd4daab5f3edbe72f7e768",
+    "hub_ble.ino": "51a90630c7c12901e2711a2f985502b3e6d3e05cc94965f7282390ec238dcdaa"
   }
 }

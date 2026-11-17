@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=9';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=10';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -35,7 +35,8 @@ export class HubBLE extends EventTarget{
   if(this.info.channelSelection){
    if(s.enabledMask===null||(s.enabledMask&~this.info.availableMask)||(s.active&~s.enabledMask))throw Error('Invalid channel configuration; reconnect.');
   }else if(s.reply===8)throw Error('Unexpected settings response; reconnect.');
-  if(this.info.testControls&&(s.flags!==0||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
+  if(this.info.testControls&&((this.info.calibrationPulses?s.flags>1:s.flags!==0)||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
+  if(this.info.calibrationPulses&&s.calibration&&(!s.active||(s.active&(s.active-1))||s.routineKind||s.phases.some(p=>p>3)))throw Error('Invalid calibration state; reconnect.');
   if(this.info.testControls&&s.phases.some((phase,ch)=>{const bits=(s.raw>>(2*ch))&3;return phase===5?bits===0:bits!==([0,2,3,2,0][phase]);}))throw Error('Output states disagree with channel phases; reconnect.');
   if(!this.info.testControls&&s.phases.includes(5))throw Error('Unexpected manual test status; reconnect.');
   if((s.routineKind||s.routineFault)&&!this.info.routines)throw Error('Unexpected routine status; reconnect.');
@@ -69,6 +70,7 @@ export class HubBLE extends EventTarget{
 
  }
  async startRoutine(plan){
+  if(plan.targetUnit==='millivolts'&&!this.info?.sensorRangeTargets&&plan.stages.some(s=>s.targets.some(Boolean)))throw Error('Install firmware v10 for sensor-range targets.');
   const generation=this.generation,cancel=this.cancelStartsThrough||0;
   const check=()=>{if(generation!==this.generation||cancel!==(this.cancelStartsThrough||0))throw Error('Routine cancelled before start.');};
   for(let i=0;i<plan.stages.length;i++){

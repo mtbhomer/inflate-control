@@ -37,7 +37,7 @@ AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO ta
 SensorFeedback sensorSnapshot[6]; // Averaged raw samples copied to the control task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=configuredMask.load();b[2]=255;b[3]=9; // Saved enabled-channel selection.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=configuredMask.load();b[2]=255;b[3]=10; // Millivolt targets and calibration increments.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
  put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=255;b[19]=b[1]&ANALOG_MASK;
 }
@@ -113,7 +113,7 @@ void setup(){
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v9: saved enabled channels; unchanged GPIO map. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v10: sensor-range targets and calibration bursts; unchanged GPIO map. x stops.");
  channelPrefsReady=channelPrefs.begin("inflate-hub",false);
  const uint8_t saved=channelPrefsReady?channelPrefs.getUChar("channels",ENABLED_MASK):ENABLED_MASK;
  controller.setEnabledChannels(saved<=63?saved:ENABLED_MASK,millis());configuredMask.store(controller.enabledMask());
@@ -145,7 +145,7 @@ void loop(){
      analogSensors[ch].add(adcValue,mv>65535?65535:uint16_t(mv),millis());
    }
    SensorFeedback feedback[6];
-   for(unsigned ch=0;ch<6;++ch){const auto&s=analogSensors[ch];feedback[ch]={s.raw,s.lastSample,s.limits,s.available};}
+   for(unsigned ch=0;ch<6;++ch){const auto&s=analogSensors[ch];feedback[ch]={s.raw,s.lastSample,s.limits,s.available,s.millivolts};}
    portENTER_CRITICAL(&stateMux);memcpy(sensorSnapshot,feedback,sizeof(feedback));sensorGeneration=generation;portEXIT_CRITICAL(&stateMux);
  }
  static uint32_t lastNotify=0;static uint8_t telemetryChannel=0,detailChannel=0;static bool sendRoutine=true;
