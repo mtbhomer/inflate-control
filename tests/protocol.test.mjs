@@ -40,7 +40,7 @@ test('summary decodes six simultaneous phases and rejects inconsistent masks',()
 test('channel detail cannot acknowledge a command; old firmware requests an upgrade',()=>{
  const v=new DataView(new ArrayBuffer(20));v.setUint8(0,2);v.setUint8(1,0x12);v.setUint8(2,2);v.setUint8(3,6);v.setUint16(4,3,true);v.setUint32(6,info.session,true);v.setUint16(10,1000,true);v.setUint16(12,1000,true);v.setUint16(14,500,true);v.setUint16(16,5,true);v.setUint16(18,400,true);
  const h=fake();let emitted=false,acked=false;h.addEventListener('detail',()=>emitted=true);h.waiters.set(3,{resolve:()=>acked=true});h.status(v);assert.equal(emitted,true);assert.equal(acked,false);assert.equal(decodeStatus(v).cycle,3);
- v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v11 MeditationVest/);
+ v.setUint8(0,1);assert.throws(()=>decodeInfo(v),/v12 MeditationVest/);
 });
 
 import {analogReading} from '../dist/sensor.mjs';

@@ -28,6 +28,7 @@ jobs:
       - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_channels_test.cpp -o /tmp/hub-channels-test && /tmp/hub-channels-test
       - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_calibration_test.cpp -o /tmp/hub-calibration-test && /tmp/hub-calibration-test
       - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_pwm_test.cpp -o /tmp/hub-pwm-test && /tmp/hub-pwm-test
+      - run: g++ -std=c++17 -Wall -Wextra -pedantic tests/hub_sequence_speed_test.cpp -o /tmp/hub-sequence-speed-test && /tmp/hub-sequence-speed-test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

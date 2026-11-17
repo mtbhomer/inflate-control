@@ -13,7 +13,7 @@ struct Run {
  uint32_t pumpStarted=0,valveStarted=0;
 };
 struct SensorFeedback {uint16_t raw=0;uint32_t sampledAt=0;uint8_t limits=0;bool available=false;uint16_t millivolts=0;};
-struct RoutineStage {uint8_t mask=0;uint16_t pumpMs=1000,holdMs=1000,releaseMs=2000,windowMs=30000;uint16_t targets[6]={};bool ready=false;};
+struct RoutineStage {uint8_t mask=0,dutyPercent=100;uint16_t pumpMs=1000,holdMs=1000,releaseMs=2000,windowMs=30000;uint16_t targets[6]={};bool ready=false;};
 struct RoutineRun {
  bool active=false,settling=false;
  uint8_t kind=0,count=0,step=0,phase=0,pumpMask=0;
@@ -153,6 +153,12 @@ class HubController {
     if((n==1&&second)||(n==2&&bool(first)!=bool(second))){stagedCount=0;return Reply::Invalid;}
     s.ready=true;stagedAt=now;return Reply::Accepted;
   }
+  Reply configureSpeed(uint8_t index,uint8_t mask,uint16_t duty,uint32_t now){
+    update(now);
+    if(activeMask()||routine.active){stagedCount=0;return Reply::Busy;}
+    if(index>=stagedCount||index+1!=stagedCount||now-stagedAt>5000||mask!=staged[index].mask||!staged[index].ready||duty<25||duty>100||duty%5){stagedCount=0;return Reply::Invalid;}
+    staged[index].dutyPercent=duty;stagedAt=now;return Reply::Accepted;
+  }
   Reply beginRoutine(uint8_t kind,uint8_t count,uint16_t settle,uint16_t repeats,uint32_t now){
     update(now);
     if(activeMask()||routine.active){stagedCount=0;return Reply::Busy;}
@@ -233,7 +239,7 @@ class HubController {
     const auto&s=routine.stages[routine.step];
     for(unsigned ch=0;ch<6;++ch){
       auto&r=runs[ch];r=Run{};if(!(s.mask&(1<<ch)))continue;
-      r.group=s.mask;r.pumpMs=s.pumpMs;r.holdMs=s.holdMs;r.repeats=1;r.cycle=routine.pulse;r.started=routine.phaseStarted;
+      r.group=s.mask;r.dutyPercent=s.dutyPercent;r.pumpMs=s.pumpMs;r.holdMs=s.holdMs;r.repeats=1;r.cycle=routine.pulse;r.started=routine.phaseStarted;
       r.phase=routine.phase==2?Phase::Select:routine.phase==3?(routine.pumpMask&(1<<ch)?Phase::Pump:Phase::Hold):routine.phase==4?Phase::Hold:Phase::Off;
     }
   }

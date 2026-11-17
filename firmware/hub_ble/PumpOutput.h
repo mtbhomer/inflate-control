@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-// All pump pins share a fixed frequency; normal operation uses steady 0/100%.
+// All pump pins share a fixed frequency; each active run supplies its own duty.
 // IO exposes attach(pin,hz,bits), write(pin,duty) and forceLow(pin,attached).
 template<class IO> class PumpOutput {
  public:

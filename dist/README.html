@@ -1,7 +1,7 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v11
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inflate BLE firmware details</title><style>body{max-width:760px;margin:30px auto;padding:0 20px;font:15px/1.65 system-ui;background:#f4f3ee;color:#253a30}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style><a href="./">← Control page</a><pre># MeditationVest BLE v12
 
-BLE name: **MeditationVest**. This firmware adds one-channel PWM tests with sensor-based inflation-rate comparisons
-to the existing exercises and calibration controls. The working GPIO map is unchanged.
+BLE name: **MeditationVest**. This firmware adds per-zone pump speed to breathing and body-scan sequences,
+using the existing 100 Hz PWM output driver. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
@@ -23,9 +23,9 @@ Disconnect the actuator battery physically and keep JP5 open. Upload this sketch
 using the classic ESP32 target (`esp32:esp32:esp32`). The user uploads; this release
 has not been flashed or physically actuated by the assistant. Reconnect in Bluefy
 after upload. Channel selection requires v9; sensor-range targets and calibration bursts
-require v10. Timed exercises require v8 or newer.
-Earlier firmware keeps its supported controls. The current download is v11;
-`hub_ble-v10.zip` retains the previous release.
+require v10. Timed exercises require v8 or newer; sequence speed requires v12.
+Earlier firmware keeps its supported controls. The current download is v12;
+`hub_ble-v11.zip` retains the previous release.
 
 ## Enabled channels
 
@@ -58,7 +58,7 @@ assignment was edited while the channel was disabled.
 - **Zones:** independent Front / Back view; select a visual zone and assign one
   or two channels. Back zones have distinct assignments. View live sensor percentages.
 - **Sequences:** choose which sequence to configure, select its zone, and edit
-  target, pump limit, hold, released interval and zone duration. Choose a round
+  target, pump speed, pump limit, hold, released interval and zone duration. Choose a round
   count or Until Stop, optional lower back, preparation delay and spoken guidance.
 - **Device:** connection options, enabled channels, firmware download, and channel tests,
   individual switches, linked patterns, sensor setup, voltage/ADC readings and charts.
@@ -128,7 +128,40 @@ to be re-established. Save the current level after the pump stops; capture round
 down to 0.1% and rejects stale data/ADC endpoints. It changes an exercise setting,
 not a rated pressure limit. No automatic repeated calibration bursts are sent.
 
-## PWM comparison test (v11)
+## Pump speed in sequences (v12)
+
+Open **Sequences → Breathing or Body scan → zone → Pump speed**. Each zone has
+its own saved value from **25–100% in steps of 5%**. Existing and new sequences
+start at 100%; targets, channel mapping, timing, repeats and voices are retained.
+The Exercises screen shows the saved speed beside each zone&#x27;s target and duration.
+Settings stay locked while any exercise, channel test or pattern is active.
+
+The percentage sets electrical PWM duty, not measured motor RPM or pressure. It
+applies throughout every pumping phase, including repeated cues and rounds. Both
+channels assigned to a zone use that zone&#x27;s speed. In sensor mode, each pump still
+stops independently at its own target; both valves hold and release together.
+In timed mode, pumping lasts for the configured time at the chosen duty.
+
+Lower duty may require more time to reach the same target. The existing pump limit
+remains at most 2 s; it is not automatically extended. If a sensor target is not
+reached within the selected limit, the routine stops and releases as before.
+Adjust target and pump limit in Sequences after checking the actual bag response.
+Preview demonstrates slower inflation and timeout behavior with synthetic feedback;
+it is not a fitted model of the CH0 measurements or a prediction for another pump.
+
+Speed is stored with the sequence in this browser and sent transactionally before
+each Start. Every enabled zone&#x27;s speed must be acknowledged before the app commits
+the exercise. Old firmware can still run 100% sequences; reduced-speed sequences
+are blocked until firmware v12 is installed, with no silent full-power fallback.
+Manual switches, calibration increments, timed channel tests and debug patterns
+continue at 100%. The separate PWM bench test keeps its own chosen test duty.
+Valve outputs, GPIO mapping, channel selection and sensor targets are unchanged.
+The output driver remains 100 Hz / 10 bit with no startup boost. User-reported v11 CH0
+bench trials demonstrated slower pressure rise at lower duty and smooth starts at
+25%; this is not a guarantee for every motor or simultaneous paired operation.
+No v12 routine has been physically actuated by the assistant.
+
+## PWM comparison test (v11 and later)
 
 Open **Device → Pump speed test**. Choose an enabled channel with a working sensor
 and a maximum saved in Sensor setup. Use the same airbag and tubing and fully vent
@@ -141,8 +174,8 @@ Each click selects the valve for 100 ms, drives the pump at the chosen duty for 
 to the requested time, holds 200 ms for a final sensor sample, then releases. There
 is no cooldown or automatic repeat. The selected duty is applied from startup with
 no full-power kick-start, so the test can reveal poor starting at lower duties.
-Normal exercises, calibration increments and channel tests continue at 100% duty;
-valves remain on/off. The new duty setting does not change normal exercise settings.
+Calibration increments and channel tests continue at 100% duty; valves remain
+on/off. This bench-test setting is separate from the per-zone sequence speed.
 
 The ESP32 records the averaged millivolt reading just before pumping, the actual
 commanded pump interval, sample count, and the final held reading before release.
@@ -171,8 +204,9 @@ LEDC drives all six pumps at a fixed **100 Hz, 10-bit resolution**. Full-on is t
 core&#x27;s continuous-high 1023 duty special case. API initialization/write failure
 latches pump outputs off (detach and GPIO LOW) and releases valves; new actuation
 requires a hub restart. There is no fallback to full power on an error. PWM duty is
-not a measured pump speed. HW-532/D4184 switching response, motor start duty, diode
-performance and usable frequency/duty range remain **physically unverified**.
+not a measured pump speed. Hardware waveform, driver heating and diode performance remain unverified.
+The user reported smooth starts at 25% on one CH0 module in v11 trials; usable
+frequency/duty ranges across all motors and v12 routines are not established.
 
 Implementation reference: [Espressif Arduino LEDC API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/ledc.html).
 Core 3.2.1&#x27;s local implementation was checked for full-on behavior; seller claims
@@ -230,7 +264,7 @@ windows may interrupt a longer prompt at the next zone. Voice quality is subject
 
 ## Firmware protocol and checks
 
-Protocol2, firmware11, flags255, enabled/analog mask0–63, sensor selector255.
+Protocol2, firmware12, flags255, enabled/analog mask0–63, sensor selector255.
 18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
 receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
 New staged commands: op5 = zone timing (aux index, mask channels, pump max, hold,
@@ -254,8 +288,18 @@ The summary low flags bit0 marks calibration activity in v10; it must accompany
 one active channel in Select/Pump/Hold, never a routine. GPIO pin assignments and
 all existing Stop, disconnect and enabled-channel protections are unchanged.
 
+Op11 stages a zone&#x27;s pump speed after its op5 timing and op7 targets:
+aux = stage index 0–2, mask = same enabled zone channels, pump field = duty 25–100
+in 5% steps, hold/release/repeats zero. It requires idle state, current staged zone,
+accepted targets and unexpired 5 s staging. Invalid speed or order clears staging.
+A newly configured stage defaults to 100% for compatibility; the v12 app explicitly
+sends and acknowledges every stage&#x27;s speed. Stop/disconnect clears staging, and
+a rejected, expired, unconfirmed or cancelled speed request prevents the app from
+sending the final op6 commit. Session/sequence/replay/250ms receive-expiry checks
+also apply. Runtime speed changes are rejected while an exercise is active.
+
 Op10 is a single PWM comparison: one enabled-channel mask, pump field250/500/1000ms,
-hold field duty25–100% in 5% steps, release field maximum201–2700mV, repeats1, aux0.
+hold field duty 25–100% in 5% steps, release field maximum201–2700mV, repeats1, aux0.
 It requires fresh sensor data and exclusive idle outputs. Summary low flags bit1
 marks PWM activity; calibration bit0 and PWM bit1 are mutually exclusive. Reply9
 means a latched pump-output failure; Stop is still accepted, but the latched fault
@@ -280,7 +324,7 @@ At most three notifications per 50 ms: summary, alternating exercise/detail, ana
 Disabled channels&#x27; detail/analog slots are skipped, not reassigned.
 Nominal refresh: exercise100ms, analog channel300ms, debug detail channel600ms.
 
-Native controller/protocol/channel-selection/calibration/PWM tests and Node model/transport/audio
+Native controller/protocol/channel-selection/calibration/PWM/sequence-speed tests and Node model/transport/audio
 tests cover these behaviors. The classic ESP32 target compiles with core3.2.1.
 Persistence is tested with a storage callback; a real power-cycle restore and
 on-device notification reduction have not been physically verified for this release.

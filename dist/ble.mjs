@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=11';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=12';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -73,6 +73,7 @@ export class HubBLE extends EventTarget{
 
  }
  async startRoutine(plan){
+  if(plan.stages.some(s=>(s.speed??100)!==100)&&!this.info?.routineSpeed)throw Error('Install firmware v12 to use sequence pump speed.');
   if(plan.targetUnit==='millivolts'&&!this.info?.sensorRangeTargets&&plan.stages.some(s=>s.targets.some(Boolean)))throw Error('Install firmware v10 for sensor-range targets.');
   const generation=this.generation,cancel=this.cancelStartsThrough||0;
   const check=()=>{if(generation!==this.generation||cancel!==(this.cancelStartsThrough||0))throw Error('Routine cancelled before start.');};
@@ -81,6 +82,7 @@ export class HubBLE extends EventTarget{
    check();if(reply.reply!==1)throw Error('The hub did not accept the zone settings. Nothing new was started.');
    const targetReply=await this.command(7,s.mask,s.targets[0],s.targets[1]??0,0,0,i);
    check();if(targetReply.reply!==1)throw Error('The hub did not accept the sensor targets. Nothing new was started.');
+   if(this.info?.routineSpeed){const speedReply=await this.command(11,s.mask,s.speed??100,0,0,0,i);check();if(speedReply.reply!==1)throw Error('The hub did not accept the pump speed. Nothing new was started.');}
   }
   check();return this.command(6,plan.stages.length,plan.settle,0,0,plan.repeats,plan.kind);
  }

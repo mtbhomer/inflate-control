@@ -1,4 +1,4 @@
-# MeditationVest control · v11
+# MeditationVest control · v12
 
 [Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
 Download the matching firmware from Device and upload it yourself with actuator
@@ -6,7 +6,7 @@ battery disconnected and JP5 open. GPIOs are unchanged from the working v7 hub.
 
 Four bottom tabs separate Exercises, Zones, Sequences and Device. Exercises is a
 simple choose-and-start view. Zones has independent Front/Back mapping and live sensor
-readings. Sequences holds targets, timings, repeats and voice options.
+readings. Sequences holds targets, pump speeds, timings, repeats and voice options.
 Device contains connection settings and the original per-channel debugging tools.
 Under **Enabled channels**, select the boards in use and press **Apply channels**
 while idle. Disabled channels disappear from other screens; the hub skips their
@@ -18,6 +18,15 @@ zone blocks Start until an enabled channel is assigned. Preview changes stay loc
 to the preview and never alter the hub's selection. Sensor power remains connected.
 Stop controls sit beside the exercise Start button and within Device controls;
 only navigation stays fixed at the bottom.
+
+**Sequences → Pump speed** now saves 25–100% duty per zone, in 5% steps, for both
+sensor-target and timed inflation. Linked channels share the zone's speed; each
+pump still stops independently at its sensor target. Repeated cues retain speed.
+Existing settings default to 100%, and the exercise summary displays each speed.
+Lower duty may need more time to reach a target; the existing 2 s maximum pump limit
+is unchanged, and a missed target still stops and releases the routine. Settings
+are locked during activity. Reduced-speed sequences require firmware v12; older
+firmware keeps 100% sequences and cannot silently substitute full power.
 
 Device → Sensor setup uses the nominal XGZP6847A 3.3 V profile: 0.2–2.7 V = 0–100%.
 Choose a channel, add air in 0.1 s or 1 s increments while watching its reading,
@@ -35,10 +44,10 @@ the final reading, then releases. A saved channel maximum is required and stops
 pumping early; shortened runs are identified. Fully vent the same bag between
 comparisons. Start at 100% and decrease duty gradually; stop at stuttering/stall.
 The frequency is 100 Hz, with no startup boost. This is a pressure-rise comparison,
-not motor RPM or calibrated airflow. Normal controls remain 100% duty and valves
-remain on/off. Add observations and Copy results. History is per hub/browser;
+not motor RPM or calibrated airflow. Debug controls remain 100% duty and valves remain on/off. Add observations and Copy results. History is per hub/browser;
 Preview data is separate. See the firmware details for diode checks and limits.
-Physical PWM behavior has not yet been tested.
+The user reported smooth starts at 25% and duty-dependent pressure rise on one CH0
+module with v11; other motors and the new routine feature still need physical testing.
 
 The progress panel appears during an exercise, with no redundant selected-zone
 panel while idle.
