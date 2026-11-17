@@ -31,15 +31,28 @@ release. Zones retain their existing 1–60 s range. These new duration behavior
 require firmware v13; the app blocks unsupported plans before sending them.
 Settings remain locked during activity, and Stop/disconnect still release.
 
+**Target level** in Sequences now means **% of each channel's saved maximum**.
+A saved maximum of 60% sensor makes a 50% level target 30% sensor, and a 100%
+level target 60% sensor. Linked channels use their own maximums at the same chosen
+level. The actual sensor target appears below the input. Pump speed remains a
+separate PWM setting. Zones shows live relative levels with raw sensor values
+underneath; Device retains raw sensor percentages for calibration and debugging.
+
 Device → Sensor setup uses the nominal XGZP6847A 3.3 V profile: 0.2–2.7 V = 0–100%.
 Choose a channel, add air in 0.1 s or 1 s increments while watching its reading,
-then save the current percentage as its maximum exercise target. Air is held
-between increments; Release or disconnect vents it, with a 10 s automatic release
-after the last burst. These manual bursts ignore the saved maximum. Maximums are
-saved per hub in this browser and do not rescale the sensor percentage. Old manual
-reference targets are cleared while mappings/timings are preserved. Above 100%
-does not cancel an exercise; ADC/sensor faults still stop it. This feature
-needs firmware v10, which compares measured millivolts rather than raw ADC counts.
+then save that sensor percentage as the maximum defining 100% in Sequences.
+Changing a maximum changes subsequent exercise targets. Air is held between
+increments, with Release/disconnect and a 10 s automatic release after the last
+burst. These manual bursts ignore the saved maximum. Levels describe sensor
+signal, not air volume. Readings above 100% do not cancel an exercise; ADC/sensor
+faults still stop it.
+
+Old target settings convert automatically only with known, equal assigned-channel
+maximums, rounding down rather than increasing targets. Otherwise the app retains
+the old sensor target in a review note and asks for a new relative level. It backs
+up the original configuration and retains mappings, speed, timing and voice.
+This browser update works with existing firmware v13; **no firmware upload is
+needed**. The wire protocol still uses millivolts and independent paired targets.
 Device → **Pump speed test** adds a v11 PWM comparison. Choose a channel, duty and
 pump duration (default **1 second**). Each finite test records sensor start/end
 percentages and inflation rate in percentage points per second, holds 0.2 s for
@@ -55,8 +68,8 @@ module with v11; other motors and the new routine duration behavior still needs 
 The progress panel appears during an exercise, with no redundant selected-zone
 panel while idle.
 
-Exercises can inflate to nominal sensor-range percentages or use timed
-inflation. Each zone repeats inflate/hold/release cues for its configured duration;
+Exercises can inflate to a relative level based on each channel’s saved maximum,
+or use timed inflation. Each zone repeats inflate/hold/release cues for its configured duration;
 body scan progresses upper/middle/optional lower back. The ESP32 executes timing
 and feedback. See [firmware details](firmware/hub_ble/README.md) for limits,
 calibration semantics, sensor faults, GPIOs and protocol.

@@ -1,8 +1,8 @@
-import {percentMillivolts,validMaximum} from './sensor-profile.mjs?v=13';
+import {percentMillivolts,validMaximum,levelTarget} from './sensor-profile.mjs?v=13.1';
 export const ZONES={front:{name:'Front',code:'D',cue:'Notice gentle contact at the front of your body. Let your breathing stay natural.'},upper:{name:'Upper back',code:'B1 / C1',cue:'Bring attention to your upper back. Notice contact around your shoulders.'},middle:{name:'Middle back',code:'B2 / C2',cue:'Move attention to your middle back. Notice support and sensation.'},lower:{name:'Lower back',code:'LB',cue:'Continue to your lower back. Notice contact and relaxation in this area.'}};
 export const ROUTINE_PHASES=['Ready','Settle in','Selecting zone','Inflating to target','Notice contact','Release','Released · observe'];
 const zone=()=>({mask:0,mode:'sensor',target:null,speed:100,pump:2000,hold:1000,release:2000,window:30000});
-export function defaultRoutines(){return {targetScale:'sensor-range-v1',selected:'breathing',spoken:false,voice:'sarah',browserVoice:'',rate:1,breathing:{settle:5000,repeats:1,lower:false,zones:{front:zone()}},scan:{settle:30000,repeats:1,lower:true,zones:{upper:zone(),middle:zone(),lower:zone()}}};}
+export function defaultRoutines(){return {targetScale:'channel-maximum-v1',selected:'breathing',spoken:false,voice:'sarah',browserVoice:'',rate:1,breathing:{settle:5000,repeats:1,lower:false,zones:{front:zone()}},scan:{settle:30000,repeats:1,lower:true,zones:{upper:zone(),middle:zone(),lower:zone()}}};}
 export function zoneIds(kind,cfg){return kind==='breathing'?['front']:cfg.lower?['upper','middle','lower']:['upper','middle'];}
 export function channels(mask){return Array.from({length:6},(_,ch)=>ch).filter(ch=>mask&(1<<ch));}
 const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max;
@@ -14,9 +14,22 @@ export function cleanRoutines(saved){
   for(const id of Object.keys(t.zones)){const z=c.zones?.[id];if(!z)continue;
    for(const [key,min,max] of [['mask',0,63],['pump',50,60000],['hold',0,10000],['release',500,10000],['window',1000,60000]])if(integer(z[key],min,max))t.zones[id][key]=z[key];
    if(validPumpSpeed(z.speed))t.zones[id].speed=z.speed;
-   if(saved.targetScale==='sensor-range-v1'&&Number.isFinite(z.target)&&z.target>=0.1&&z.target<=100)t.zones[id].target=z.target;t.zones[id].mode=z.mode==='timed'?'timed':'sensor';
+   if(saved.targetScale==='channel-maximum-v1'){if(validMaximum(z.target))t.zones[id].target=z.target;else if(validMaximum(z.legacySensorTarget))t.zones[id].legacySensorTarget=z.legacySensorTarget;if(validMaximum(z.convertedSensorTarget))t.zones[id].convertedSensorTarget=z.convertedSensorTarget;}else if(saved.targetScale==='sensor-range-v1'&&validMaximum(z.target))t.zones[id].legacySensorTarget=z.target;t.zones[id].mode=z.mode==='timed'?'timed':'sensor';
   }
  }return d;
+}
+// Convert only an unambiguous saved sensor-scale target. Paired unequal maxima
+// need an explicit new level. Round down so migration never raises a target.
+export function migrateSensorTargets(data,options){
+ let changed=false;
+ for(const kind of ['breathing','scan'])for(const z of Object.values(data[kind].zones)){
+  if(!validMaximum(z.legacySensorTarget))continue;
+  const members=channels(z.mask),maxima=members.map(ch=>options?.[ch]?.maximum);
+  if(!members.length||maxima.some(m=>!validMaximum(m)||m!==maxima[0]||z.legacySensorTarget>m))continue;
+  let level=Math.floor((z.legacySensorTarget/maxima[0]*100+1e-9)*10)/10;
+  try{if(levelTarget(level,maxima[0]).millivolts>percentMillivolts(z.legacySensorTarget))level=Math.floor((level-.1)*10+1e-7)/10;levelTarget(level,maxima[0]);}catch{continue;}
+  z.target=level;z.convertedSensorTarget=z.legacySensorTarget;delete z.legacySensorTarget;changed=true;
+ }return changed;
 }
 export function buildRoutine(kind,cfg,enabled=63,options=[]){
  if(!['breathing','scan'].includes(kind)||!integer(cfg?.settle,0,60000)||!integer(cfg?.repeats,0,999))throw Error('Use a start delay of 0–60 seconds and 1–999 rounds, or Until Stop.');
@@ -28,8 +41,9 @@ export function buildRoutine(kind,cfg,enabled=63,options=[]){
   if((z.mode==='timed'&&!integer(z.pump,50,60000))||!integer(z.hold,0,10000)||!integer(z.release,500,10000)||!integer(z.window,1000,60000)||z.window<100+(z.mode==='sensor'?50:z.pump)+z.hold+z.release)throw Error(`${label}: the zone duration must fit a full pump, hold and release cycle (including 0.1 s valve lead).`);
   if(!validPumpSpeed(z.speed))throw Error(`${label}: use a pump speed from 25–100% in steps of 5%.`);
   if(!['sensor','timed'].includes(z.mode))throw Error('Choose sensor target or timed inflation.');
-  if(z.mode==='sensor'&&(!Number.isFinite(z.target)||z.target<0.1||z.target>100))throw Error(`Set ${label.toLowerCase()}'s target from 0.1–100% of the sensor range in Sequences.`);
-  const targets=channels(z.mask).map(ch=>{if(z.mode==='timed')return 0;const max=options[ch]?.maximum;if(!validMaximum(max))throw Error(`CH${ch}: set a channel maximum in Device → Sensor setup.`);if(z.target>max)throw Error(`${label}: target exceeds CH${ch}’s ${max}% maximum. Adjust the target or channel maximum.`);return percentMillivolts(z.target);});
+  if(z.mode==='sensor'&&validMaximum(z.legacySensorTarget))throw Error(`${label}: choose a target level in Sequences to replace the previous sensor-scale target.`);
+  if(z.mode==='sensor'&&!validMaximum(z.target))throw Error(`Set ${label.toLowerCase()}'s target level from 0.1–100% of the saved maximum in Sequences.`);
+  const targets=channels(z.mask).map(ch=>{if(z.mode==='timed')return 0;const max=options[ch]?.maximum;if(!validMaximum(max))throw Error(`CH${ch}: set a channel maximum in Device → Sensor setup.`);try{return levelTarget(z.target,max).millivolts;}catch(e){throw Error(`CH${ch}: ${e.message}`);}});
   return {...z,pump:z.mode==='sensor'?0:z.pump,id,targets};
  });return {targetUnit:'millivolts',kind:kind==='breathing'?1:2,settle:cfg.settle,repeats:cfg.repeats,stages};
 }

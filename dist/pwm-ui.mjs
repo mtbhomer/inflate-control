@@ -1,6 +1,6 @@
-import {sensorPercent} from './sensor-profile.mjs?v=13';
-import {analogReading} from './sensor.mjs?v=13';
-import {PWM_RESULTS,pwmMeasurement,pwmAllowed,pwmReportText} from './pwm-test.mjs?v=13';
+import {sensorPercent} from './sensor-profile.mjs?v=13.1';
+import {analogReading} from './sensor.mjs?v=13.1';
+import {PWM_RESULTS,pwmMeasurement,pwmAllowed,pwmReportText} from './pwm-test.mjs?v=13.1';
 const $=id=>document.getElementById(id),set=(id,v)=>{if($(id).textContent!==v)$(id).textContent=v;};
 const fmt=n=>n===null?'—':n.toFixed(2);
 const STORE='inflate.pwm-results.v1';

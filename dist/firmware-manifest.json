@@ -169,14 +169,17 @@
   },
   "sensorDisplayOnly": false,
   "routineSensorControl": {
-    "percentScale": "nominal sensor full span",
+    "percentScale": "percentage of each channel saved maximum",
+    "rawDisplayScale": "nominal sensor full span",
+    "relativeTargetsInBrowser": true,
+    "relativeTargetsRequireNewFirmware": false,
     "sensorProfile": {
       "model": "XGZP6847A 3.3 V assumed",
       "zeroMv": 200,
       "fullMv": 2700
     },
     "targetUnit": "millivolts",
-    "channelMaximums": "per-device browser setting; constrains exercise targets",
+    "channelMaximums": "per-device browser setting; defines 100% target level per channel",
     "over100PercentCancels": false,
     "perBurstTimeoutMs": null,
     "targetOnlyRequiresFirmware": 13,
@@ -249,7 +252,7 @@
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
     "PumpOutput.h": "0acf00f9262848c834ff117f790bfda048e85ddc84c50723ad6379e9e6e7ecc3",
-    "README.md": "12edf4dc794e7e853a153bdf7d122bdb581fbcfbf4468bc3f570da653d9778b0",
+    "README.md": "abc9925a62b89b4da5ed570ec8f65fae72c0d1aa912a6d419efd650af5b8e03a",
     "hub_ble.ino": "fd5a09040c1987d475811d8148ec976ed033467043df542d76b04eb073d63888"
   }
 }

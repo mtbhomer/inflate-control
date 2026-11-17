@@ -18,12 +18,13 @@ test('configuration sends every zone before one atomic routine start',async()=>{
 test('Stop during routine setup prevents all remaining configuration and start writes',async()=>{const h=fake(),ops=[];let stopped;h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes),op=v.getUint8(1);ops.push(op);h.status(summary(v.getUint16(4,true),op===2?6:1));if(op===5)stopped=h.command(2);}};await assert.rejects(h.startRoutine(buildRoutine('scan',mapped().scan)),/cancelled/);await stopped;assert.deepEqual(ops,[5,2]);});
 test('rejected zone configuration never sends a routine start',async()=>{const h=fake(),ops=[];h.commandChar={async writeValueWithResponse(bytes){const v=new DataView(bytes);ops.push(v.getUint8(1));h.status(summary(v.getUint16(4,true),4));}};await assert.rejects(h.startRoutine(buildRoutine('scan',mapped().scan)),/did not accept/);assert.deepEqual(ops,[5]);});
 
-test('sensor-range targets use nominal millivolts and each channel maximum',()=>{
+test('relative targets use nominal millivolts and each channel maximum',()=>{
  const d=mapped(),z=d.breathing.zones.front;z.mode='sensor';z.mask=3;
  const options=[{maximum:12},{maximum:8}];assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/Set front/);
- z.target=8;const p=buildRoutine('breathing',d.breathing,63,options);assert.deepEqual(p.stages[0].targets,[400,400]);assert.equal(p.targetUnit,'millivolts');
- z.target=9;assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/CH1.*8% maximum/);
- z.target=0.1;assert.deepEqual(buildRoutine('breathing',d.breathing,63,options).stages[0].targets,[203,203]);assert.throws(()=>buildRoutine('breathing',d.breathing),/CH0/);
+ z.target=50;const p=buildRoutine('breathing',d.breathing,63,options);assert.deepEqual(p.stages[0].targets,[350,300]);assert.equal(p.targetUnit,'millivolts');
+ z.target=100;assert.deepEqual(buildRoutine('breathing',d.breathing,63,options).stages[0].targets,[500,400]);
+ z.target=101;assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/target level/);
+ z.target=0.1;assert.throws(()=>buildRoutine('breathing',d.breathing,63,options),/too low/);assert.throws(()=>buildRoutine('breathing',d.breathing),/CH0/);
 });
 test('target packets and fault markers reject malformed values',()=>{
  const v=new DataView(encodeCommand({op:7,mask:3,aux:0,pumpMs:1200,holdMs:1800,releaseMs:0,repeats:0,seq:1,session:42},info));assert.equal(v.getUint16(8,true),1800);

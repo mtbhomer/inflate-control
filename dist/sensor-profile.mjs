@@ -4,3 +4,13 @@ export function sensorPercent(millivolts){return Number.isFinite(millivolts)?(mi
 export function validMaximum(value){return Number.isFinite(value)&&value>=0.1&&value<=100;}
 export function percentMillivolts(percent){if(!validMaximum(percent))throw Error('Use 0.1–100% of the sensor range.');return Math.round(SENSOR_PROFILE.zeroMv+(SENSOR_PROFILE.fullMv-SENSOR_PROFILE.zeroMv)*percent/100);}
 export function cleanSensorOptions(saved){return Array.from({length:6},(_,ch)=>({maximum:validMaximum(saved?.[ch]?.maximum)?saved[ch].maximum:null}));}
+
+// Relative levels use nominal sensor zero, not bag volume or measured comfort.
+export function maximumLevel(millivolts,maximum){return validMaximum(maximum)&&Number.isFinite(millivolts)?sensorPercent(millivolts)*100/maximum:null;}
+export function levelTarget(level,maximum){
+ if(!validMaximum(level))throw Error('Set a target level from 0.1–100% of the saved maximum.');
+ if(!validMaximum(maximum))throw Error('Save this channel’s maximum in Device → Sensor setup.');
+ const percent=maximum*level/100,millivolts=Math.round(SENSOR_PROFILE.zeroMv+(SENSOR_PROFILE.fullMv-SENSOR_PROFILE.zeroMv)*percent/100);
+ if(millivolts<=SENSOR_PROFILE.zeroMv)throw Error('Target level is too low for the sensor resolution. Increase the level.');
+ return {percent,millivolts};
+}

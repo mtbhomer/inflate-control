@@ -69,50 +69,65 @@ Changing the Zones view or the sequence being edited does not change the exercis
 selected on Exercises. Exercise settings are saved locally in the browser;
 enabled-channel selection is saved on the hub.
 
-## Sensor-range percentages and channel maximums
+## Target levels and sensor readings
 
-The user selected **100% = the sensor&#x27;s full theoretical range**, not a captured
-full airbag. The app uses the nominal positive-pressure XGZP6847A 3.3 V profile:
-**0.2 V = 0%, 2.7 V = 100%**. Percentage = `(millivolts - 200) / 25`.
-This profile is based on the discussed manufacturer/seller specification; the exact
-received part suffix has not been independently established. See the
+The app now separates two scales. **Sequences → Target level** and live readings
+in **Zones** use a percentage of each channel&#x27;s saved maximum. **Device → Sensor
+setup** continues to show the original nominal sensor-range percentage.
+This is a browser update; existing firmware v13 needs no new upload.
+
+| Setting or reading | Meaning |
+|---|---|
+| Saved maximum in Device | Original sensor percentage chosen for this channel |
+| Target level in Sequences | Percentage of that saved maximum |
+| Pump speed | Independent electrical PWM duty |
+
+For a saved maximum of 60% sensor, a 50% target level means a 30% sensor target;
+a 100% level means 60% sensor. The Sequence editor shows each channel&#x27;s actual
+sensor target underneath. Linked channels share the relative level, but use their
+own maximums: at 50%, channels with maxima 60% and 40% target 30% and 20% sensor
+respectively. Each pump stops independently, followed by shared hold/release.
+Changing a saved maximum changes the physical targets of future exercises; the
+Device helper explains this and shows the 50% example. Active settings stay locked.
+
+The underlying nominal positive-pressure XGZP6847A 3.3 V profile stays unchanged:
+**0.2 V = 0%, 2.7 V = 100% sensor range**. Sensor percentage is
+`(millivolts - 200) / 25`. Each wire target is
+`round(200 + 25 × savedMaximum × targetLevel / 100)` millivolts. Firmware still
+receives millivolts. Very small relative targets that round to nominal zero are
+rejected with a request to increase the level, rather than silently raised.
+The exact received sensor suffix remains unverified; see the
 [manufacturer product page](https://cfsensor.com/product/xgzp6847a/).
 
-No manual zero/ceiling capture is needed. Values below 0% or above 100% remain
-visible numerically; the meter graphic is bounded. These are nominal sensor-span
-percentages, not air volume or a verified pressure/safety calibration. Voltage,
-ADC conversion, sensor offset and supply errors still affect accuracy.
+These levels follow the sensor signal above nominal zero. They are not air-volume
+percentages, measured comfort intensity or a verified pressure/safety calibration.
+Voltage, ADC conversion, sensor offset and supply errors still affect accuracy.
+Device debugging and PWM comparison results retain their original sensor-range
+scale. Zones shows relative readings with the raw sensor percentage underneath.
+Readings below 0% or above 100% remain visible; the meter graphic is bounded.
 
-In **Device → Sensor setup**, choose an enabled channel. Enter its **Maximum
-exercise target**, or use the calibration buttons below to find a suitable level
-and **Save current level as maximum**. For example, a full airbag reading of 8%
-saves an 8% maximum; it does not relabel that reading as 100%. Maximums start blank,
-are saved per hub in this browser, and remain separate from Preview settings.
-They constrain sensor-target exercises and PWM comparisons, not manual calibration bursts, timed channel tests or patterns.
+Device maximums start blank and are saved per hub in this browser. They define
+100% for sequence targets and stop PWM comparisons early. They do not stop manual
+calibration bursts, timed channel tests or debug patterns. Overshooting a target
+or saved maximum does not cancel a sequence; pumps stop at their targets and
+continue into hold/release. An already-reached target skips pumping. No top-up
+occurs during hold. Missing/stale (500 ms) feedback and actual ADC endpoints still
+stop and release sensor-target exercises. A plausible floating input is not
+reliably detected. Averaging delays response; overshoot is not ruled out.
 
-Sequence targets use the same sensor percentage, from 0.1–100%. A target must be
-at or below every assigned channel&#x27;s maximum. Paired channels share a percentage
-target; each pump stops independently at its measured target, followed by shared
-hold and release. Targets convert to **millivolts**, not guessed raw ADC counts:
-`targetMv = round(200 + 25 × percent)`. Firmware compares its averaged calibrated
-millivolt reading. A raw-ADC/voltage ratio is used only for synthetic Preview data.
+### Existing settings
 
-Passing a target, channel maximum or nominal 100% **does not cancel an exercise**.
-If already above target, the pump remains off and the valve enters hold, then
-releases normally. No top-up occurs during hold. An exercise normally ends when
-its configured zone duration and round count finish; the completion voice reflects
-that. Round count and per-round duration appear before Start when ready.
+The app backs up the old sensor-scale configuration in
+`inflate.routines.sensor-range-backup.v1`. With one assigned channel, or a pair
+with equal saved maximums, it converts the old target to a relative level and
+rounds down to 0.1% so conversion does not raise the millivolt target. Missing,
+insufficient or unequal paired maximums leave the level blank and retain the old
+sensor target in a review message. Choose a new level before starting that sensor
+routine. Preview defaults never perform a real-settings conversion.
 
-Missing/stale (500 ms) samples and actual ADC endpoints still stop and release
-sensor-target exercises. The target-only mode has no separate pump timeout. A floating analog input can look plausible;
-this is not reliable sensor-presence detection. Four-sample averaging introduces
-response delay. Physical overshoot has not been validated by software tests.
-
-Old reference-based percentage targets are cleared on migration, while channel
-mappings, timing, repeat and voice choices remain. They cannot safely be reinterpreted
-as percentages of the sensor&#x27;s full span. Old reference storage is left intact.
-Older firmware supports its existing manual/timed controls, but the app does not
-send millivolt targets to firmware expecting raw ADC targets.
+The stored scale is now `channel-maximum-v1`; already-relative values are never
+converted again. Mappings, speeds, timings, repeats and voices remain. Old
+pre-sensor-range reference targets still cannot be reinterpreted and remain unset.
 
 ## Calibrating the airbag&#x27;s full level
 
@@ -177,7 +192,7 @@ Valve outputs, GPIO mapping, channel selection and sensor targets are unchanged.
 The output driver remains 100 Hz / 10 bit with no startup boost. User-reported v11 CH0
 bench trials demonstrated slower pressure rise at lower duty and smooth starts at
 25%; this is not a guarantee for every motor or simultaneous paired operation.
-No v13 routine has been physically actuated by the assistant.
+No v13 routine has been physically actuated by the assistant. The relative-target UI update requires no new firmware upload.
 
 ## PWM comparison test (v11 and later)
 
