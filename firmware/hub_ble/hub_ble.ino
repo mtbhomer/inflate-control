@@ -44,7 +44,7 @@ AnalogSensor analogSensors[6]; // Owned only by loop(); never blocks the GPIO ta
 SensorFeedback sensorSnapshot[6]; // Averaged raw samples copied to the control task.
 
 void fillInfo(uint8_t*b){
- memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=configuredMask.load();b[2]=255;b[3]=13; // Target-only routines and longer timed sequence inflation.
+ memset(b,0,20);b[0]=PROTOCOL_VERSION;b[1]=configuredMask.load();b[2]=255;b[3]=14; // Snapshot/clock ordering fix and specific routine fault reasons.
  put16(b+4,HubController::MIN_PUMP);put16(b+6,HubController::MAX_PUMP);put16(b+8,HubController::MAX_HOLD);
  put16(b+10,HubController::LEAD);put16(b+12,HubController::MAX_RELEASE);put32(b+14,session.load());b[18]=255;b[19]=b[1]&ANALOG_MASK;
 }
@@ -90,11 +90,14 @@ void process(Command c,uint32_t now){
 }
 void controlTask(void*){
  for(;;){
-   const uint32_t now=millis();
    portENTER_CRITICAL(&stateMux);
    if(sensorGeneration==configurationGeneration.load())memcpy(controller.sensors,sensorSnapshot,sizeof(sensorSnapshot));
    else for(auto&s:controller.sensors)s=SensorFeedback{};
    portEXIT_CRITICAL(&stateMux);
+   // Read time AFTER copying feedback: the other core can publish a newer
+   // sample while this task is preempted. An older clock value would make
+   // unsigned sample age wrap and falsely report fresh feedback as stale.
+   const uint32_t now=millis();
    const uint32_t nonce=session.load();
    if(nonce!=currentSession){currentSession=nonce;lastSeq=0;reply=Reply::None;controller.clearStagedRoutine();controller.clearPwmReport();}
    if(endContinuous.exchange(false))controller.endContinuous();
@@ -123,7 +126,7 @@ void setup(){
  for(uint8_t ch=0;ch<6;++ch)if(ANALOG_MASK&(1<<ch)){
    pinMode(ANALOG_PINS[ch],INPUT);analogSetPinAttenuation(ANALOG_PINS[ch],ADC_11db);
  }
- Serial.begin(115200);Serial.println("MEDITATION VEST BLE v13: sensor-target sequences have no 2 s cutoff; zone end releases. x stops.");
+ Serial.begin(115200);Serial.println("MEDITATION VEST BLE v14: sensor snapshot timing fixed; specific routine stop reasons. x stops.");
  if(!pumpOutput.begin()){Serial.println("PWM output initialization failed; GPIOs forced LOW; BLE not started.");return;}
  channelPrefsReady=channelPrefs.begin("inflate-hub",false);
  const uint8_t saved=channelPrefsReady?channelPrefs.getUChar("channels",ENABLED_MASK):ENABLED_MASK;

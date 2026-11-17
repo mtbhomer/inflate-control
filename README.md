@@ -1,4 +1,4 @@
-# MeditationVest control · v13
+# MeditationVest control · v14
 
 [Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
 Download the matching firmware from Device and upload it yourself with actuator
@@ -44,15 +44,21 @@ then save that sensor percentage as the maximum defining 100% in Sequences.
 Changing a maximum changes subsequent exercise targets. Air is held between
 increments, with Release/disconnect and a 10 s automatic release after the last
 burst. These manual bursts ignore the saved maximum. Levels describe sensor
-signal, not air volume. Readings above 100% do not cancel an exercise; ADC/sensor
-faults still stop it.
+signal, not air volume. Readings above 100% do not cancel an exercise. With v14, a fresh ADC ceiling
+also stops only the affected pump; hold, release and the next zone continue.
+Missing/stale data, ADC floor or both electrical endpoints still stop the routine.
 
 Old target settings convert automatically only with known, equal assigned-channel
 maximums, rounding down rather than increasing targets. Otherwise the app retains
 the old sensor target in a review note and asks for a new relative level. It backs
 up the original configuration and retains mappings, speed, timing and voice.
-This browser update works with existing firmware v13; **no firmware upload is
-needed**. The wire protocol still uses millivolts and independent paired targets.
+The relative scale still uses millivolts and independent paired targets.
+**Upload firmware v14** for the ADC-ceiling behavior and the snapshot/clock ordering
+fix that prevents a fresh sensor sample from appearing stale. Refresh the app too.
+Exercises now retains a **Last stop** record with Copy stop details, including
+channel and exact v14 reason, across Stop, disconnect and browser reload. Old
+firmware can only report its generic sensor-fault category. No hardware test of
+v14 has been performed by the assistant.
 Device → **Pump speed test** adds a v11 PWM comparison. Choose a channel, duty and
 pump duration (default **1 second**). Each finite test records sensor start/end
 percentages and inflation rate in percentage points per second, holds 0.2 s for

@@ -1,13 +1,15 @@
-import {SENSOR_PROFILE,sensorPercent,validMaximum,cleanSensorOptions,maximumLevel,levelTarget} from './sensor-profile.mjs?v=13.1';
-import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=13.1';
-import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine,migrateSensorTargets} from './routines.mjs?v=13.1';
-import {analogReading} from './sensor.mjs?v=13.1';
+import {RoutineFaultLog,routineFaultText,routineFaultReport} from './routine-faults.mjs?v=14';
+import {SENSOR_PROFILE,sensorPercent,validMaximum,cleanSensorOptions,maximumLevel,levelTarget} from './sensor-profile.mjs?v=14';
+import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=14';
+import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine,migrateSensorTargets} from './routines.mjs?v=14';
+import {analogReading} from './sensor.mjs?v=14';
 const $=id=>document.getElementById(id);
 const text=(id,v)=>{if($(id).textContent!==v)$(id).textContent=v;};
 const seconds=ms=>(ms/1000).toFixed(1).replace(/\.0$/,'');
 const input=(id,label,value,min,max,step=1)=>`<label class="routine-field" for="${id}"><span>${label}</span><div class="number-field"><input id="${id}" type="number" inputmode="decimal" required min="${min}" max="${max}" step="${step}" value="${value}"><span>s</span></div></label>`;
 export class RoutineUI{
  constructor({context,start,changed,pulse=()=>{}}){
+  this.faultLog=new RoutineFaultLog();
   this.context=context;this.start=start;this.changed=changed;this.data=defaultRoutines();this.pulse=pulse;this.calibration=cleanSensorOptions(null);this.demoCalibration=Array.from({length:6},()=>({maximum:20}));this.setupChannel=0;
   try{this.savedCalibration=JSON.parse(localStorage.getItem('inflate.sensor-options.v1'));if(typeof this.savedCalibration?.deviceId==='string')this.setDevice(this.savedCalibration.deviceId);}catch{}
   try{
@@ -35,7 +37,7 @@ export class RoutineUI{
    <section class="routine-session"><div class="section-top"><h3>Session</h3><button id="routine-short" class="text-button">Short test timings</button></div><div class="session-grid">${input('routine-settle','Start delay',5,0,60)}<label class="routine-field" for="routine-repeat"><span>Repeat</span><select id="routine-repeat"><option value="once">Once</option><option value="count">Set rounds</option><option value="forever">Until Stop</option></select></label><label id="routine-count-label" class="routine-field" for="routine-count"><span>Total rounds</span><div class="number-field"><input id="routine-count" type="number" inputmode="numeric" min="1" max="999" step="1" value="3"></div></label></div>
     <div class="voice-option"><label><input id="routine-voice" type="checkbox"> Spoken guidance</label><button id="voice-preview" class="text-button">Preview voice</button></div><div class="session-grid"><label class="routine-field" for="voice-choice"><span>Guidance voice</span><select id="voice-choice"><option value="sarah">Sarah · prepared audio</option><option value="lily">Lily · prepared audio</option><option value="device">Device voice</option></select></label><label class="routine-field" for="voice-rate"><span>Speaking speed</span><select id="voice-rate"><option value="0.85">Slower · 0.85×</option><option value="1">Natural · 1×</option><option value="1.15">Faster · 1.15×</option></select></label></div><label id="device-voice-label" class="routine-field" for="device-voice" hidden><span>Voice on this device</span><select id="device-voice"></select></label><p id="voice-note" class="footnote"></p>
     <div id="routine-zone-summary" class="routine-zone-summary"></div><div id="routine-timeline" class="routine-timeline" aria-label="Routine order"></div><p id="routine-estimate" class="footnote"></p>
-    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=13" download>Download v13</a>. Your existing controls are under Device → Channel tests.</p>
+    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=14" download>Download v14</a>. Your existing controls are under Device → Channel tests.</p>
     <button id="routine-start" class="routine-start" disabled>Start breathing routine <span aria-hidden="true">→</span></button><p class="footnote">Keep Bluefy open for live guidance. Stop or Bluetooth disconnection releases the routine. Sensor targets stop each pump. The zone ends with release, even if the target has not been reached.</p>
    </section>`;
   $('zones').innerHTML='<div class="routine-intro"><p class="eyebrow">MAP & ADJUST</p><h2>Zone mapping</h2><p id="zone-routine-title"></p><div class="sequence-picker" role="group" aria-label="Vest side"><button id="map-front" aria-pressed="true">Front</button><button id="map-back" aria-pressed="false">Back</button></div></div>';
@@ -49,6 +51,9 @@ export class RoutineUI{
   const session=document.querySelector('.routine-session'),summary=$('routine-zone-summary'),validation=$('routine-validation'),upgrade=$('routine-upgrade'),startButton=$('routine-start');
   $('sequences').append(session);$('routines').append(summary,validation,upgrade);
   const actions=document.createElement('div');actions.className='routine-actions';actions.append(startButton);actions.insertAdjacentHTML('beforeend','<button class="stop-control" data-stop disabled><span class="stop-icon" aria-hidden="true"></span>Stop & release</button>');$('routines').append(actions);
+  $('routines').insertAdjacentHTML('beforeend','<details id="routine-last-stop" class="routine-last-stop" hidden><summary id="routine-last-stop-title">Last stop</summary><p id="routine-last-stop-reason"></p><p id="routine-last-stop-time" class="footnote"></p><p class="footnote">Passing 100% of the saved maximum does not itself stop an exercise. ADC limits refer to the electrical input range.</p><button id="routine-copy-stop" class="text-button">Copy stop details</button><span id="routine-copy-message" class="footnote" role="status"></span></details>');
+  $('routines').insertBefore($('routine-last-stop'),summary);
+  $('routine-copy-stop').addEventListener('click',async()=>{const record=this.faultLog.get(this.context().demo,this.deviceId);try{await navigator.clipboard.writeText(routineFaultReport(record));text('routine-copy-message','Copied');}catch{text('routine-copy-message','Copy unavailable in this browser. The reason is shown above.');}});
 
   for(const button of document.querySelectorAll('[data-config-kind]'))button.addEventListener('click',()=>{if(this.locked())return;this.editKind=button.dataset.configKind;this.editZone=this.editKind==='scan'?'upper':'front';this.fill();this.changed();});
   $('sequence-zone-picker').addEventListener('click',e=>{const b=e.target.closest('[data-config-zone]');if(!b||this.locked())return;this.editZone=b.dataset.configZone;this.fill();this.changed();});
@@ -189,7 +194,10 @@ export class RoutineUI{
   const perRound=editIds.reduce((n,id)=>n+cfg.zones[id].window,0),total=cfg.settle+perRound*(cfg.repeats||1);text('routine-estimate',cfg.repeats?`${cfg.repeats} ${cfg.repeats===1?'round':'rounds'} · about ${seconds(total)} seconds total.`:`Repeats until Stop · ${seconds(perRound)} seconds per round after settling.`);
   const overview=runIds.map(id=>{const a=runCfg.zones[id];return `<div class="zone-overview"><span><b>${ZONES[id].name}</b><small>${channels(a.mask&this.enabledMask).map(ch=>'CH'+ch).join(' + ')||'Assign channels'}</small></span><span><b>${a.mode==='timed'?seconds(a.pump)+' s':a.target===null?'Set target':a.target+'% of max'}</b><small>${a.speed??100}% speed · ${seconds(a.window)} s</small></span></div>`;}).join('');if($('routine-zone-summary').innerHTML!==overview)$('routine-zone-summary').innerHTML=overview;
   let error='';try{const plan=buildRoutine(this.data.selected,runCfg,this.enabledMask,this.refs);if(c.online&&plan.stages.some(s=>s.pump===0||s.pump>2000)&&!c.info?.targetOnlyRoutines)throw Error('Install firmware v13 to run sequences without the 2-second cutoff.');if(c.online&&plan.stages.some(s=>(s.speed??100)!==100)&&!c.info?.routineSpeed)throw Error('Install firmware v12 to use sequence pump speed.');if(c.online&&plan.stages.some(s=>s.targets.some(Boolean))&&!c.info?.sensorRangeTargets)throw Error('Install firmware v10 for sensor-range targets.');}catch(e){error=e.message;}
-  const fault=c.routineFault?`CH${c.routineFaultChannel}: ${c.routineFault===2?'target was not reached within the pump limit':'sensor reading is missing, stale or at an ADC endpoint'}. Routine stopped and released. Check the channel before restarting.`:'';
+  this.faultLog.observe(c,this.deviceId);
+  const lastStop=this.faultLog.get(c.demo,this.deviceId);$('routine-last-stop').hidden=!lastStop;
+  if(lastStop){if(this.lastStopAt!==lastStop.at){$('routine-last-stop').open=true;text('routine-copy-message','');this.lastStopAt=lastStop.at;}text('routine-last-stop-title',`${lastStop.preview?'Preview · ':''}Last stop · CH${lastStop.channel}`);text('routine-last-stop-reason',routineFaultText(lastStop.code,lastStop.channel));text('routine-last-stop-time',`${new Date(lastStop.at).toLocaleString()} · firmware v${lastStop.firmware??'unknown'}`);}
+  const fault=c.routineFault?routineFaultText(c.routineFault,c.routineFaultChannel):'';
   text('routine-validation',fault||error||(!c.online?'Connect your hub or try the interface to start.':!c.fresh?'Waiting for fresh hub status.':running?'Routine running. Settings stay locked until it finishes or you press Stop.':c.busy?'Stop the active channel test or pattern first.':`Ready · ${runCfg.repeats?runCfg.repeats+' round'+(runCfg.repeats===1?'':'s'):'until Stop'} · ${runIds.reduce((n,id)=>n+runCfg.zones[id].window,0)/1000} s per round.`));
   $('routine-upgrade').hidden=!c.online||c.info?.routines;
   $('routine-start').disabled=Boolean(error)||!c.fresh||!c.info?.routines||locked;

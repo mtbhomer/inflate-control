@@ -106,16 +106,16 @@ int main(){
  // Target timeout, stale data and ADC endpoints release and identify the channel.
  for(unsigned scenario=0;scenario<4;++scenario){HubController c(63);c.configureStage(0,4,200,100,500,3000,0);c.configureTargets(0,4,1000,0,0);feedback(c,2,200,0);c.beginRoutine(1,1,0,1,0);c.update(100);
   if(scenario==0){feedback(c,2,900,300);c.update(300);assert(c.routineFault==2);}
-  if(scenario==1){c.update(500);assert(c.routineFault==1);}
-  if(scenario==2){feedback(c,2,4095,150);c.update(150);assert(c.routineFault==1);}
-  if(scenario==3){c.sensors[2].available=false;c.update(150);assert(c.routineFault==1);}
+  if(scenario==1){c.update(500);assert(c.routineFault==4);}
+  if(scenario==2){feedback(c,2,0,150);c.update(150);assert(c.routineFault==5);}
+  if(scenario==3){c.sensors[2].available=false;c.update(150);assert(c.routineFault==3);}
   assert(c.routineFaultChannel==2&&!c.activeMask()&&!c.routine.active);uint8_t b[20];encodeControlSummary(b,c,42,1,Reply::Accepted);assert((b[19]&128)&&((b[19]>>3)&15)==c.routineFault);c.stop();assert(!c.routineFault);
  }
  // Targets are mandatory as a separate transaction; no valid sample means no start.
  {HubController c(63);c.configureStage(0,1,100,0,500,1000,0);assert(c.beginRoutine(1,1,0,1,0)==Reply::Invalid);
   c.configureStage(0,1,100,0,500,1000,0);assert(c.configureTargets(0,1,1000,1,0)==Reply::Invalid);
   c.configureStage(0,3,100,0,500,1000,0);assert(c.configureTargets(0,3,1000,0,0)==Reply::Invalid);
-  c.configureStage(0,1,100,0,500,1000,0);c.configureTargets(0,1,1000,0,0);assert(c.beginRoutine(1,1,0,1,0)==Reply::Invalid&&c.routineFault==1&&!c.activeMask());
+  c.configureStage(0,1,100,0,500,1000,0);c.configureTargets(0,1,1000,0,0);assert(c.beginRoutine(1,1,0,1,0)==Reply::Invalid&&c.routineFault==3&&!c.activeMask());
  }
  puts("PASS: routines, paired zones, finite/continuous repeats, timing, exclusivity, release windows, transactional configuration, disconnect/Stop, wrap, replay and telemetry.");
 }

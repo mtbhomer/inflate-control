@@ -2,7 +2,7 @@ export const UUID = Object.freeze({service:'8d5a0001-4c7b-4f45-9d68-8e0c2c970001
 export const PHASES=['Ready','Selecting valve','Pumping','Holding','Released','Manual test'];
 export const REPLIES=['','Started','A selected channel is already running','','Invalid timing or channel','Channel is disabled','Release requested','Command expired; nothing started','Could not save channel selection; previous settings retained','Pump output error; outputs released. Restart the hub before testing'];
 const view=v=>v instanceof DataView?v:new DataView(v.buffer??v,v.byteOffset??0,v.byteLength);
-function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v13 MeditationVest firmware from Device, then reconnect.');return v;}
+function frame(v,n){v=view(v);if(v.byteLength!==n||v.getUint8(0)!==2)throw Error('Please install the v14 MeditationVest firmware from Device, then reconnect.');return v;}
 export function decodeInfo(input){
  const v=frame(input,20), info={mask:v.getUint8(1),sensorChannel:v.getUint8(2),firmware:v.getUint8(3),minPump:v.getUint16(4,true),maxPump:v.getUint16(6,true),maxHold:v.getUint16(8,true),lead:v.getUint16(10,true),maxRelease:v.getUint16(12,true),session:v.getUint32(14,true),flags:v.getUint8(18)};
  const legacy=info.firmware===2&&info.flags===15&&info.sensorChannel===2&&v.getUint8(19)===0;
@@ -11,8 +11,8 @@ export function decodeInfo(input){
  const six=[5,6].includes(info.firmware)&&info.flags===31&&info.sensorChannel===255&&v.getUint8(19)===63&&info.mask===63;
  const bench=info.firmware===7&&info.flags===63&&info.sensorChannel===255&&v.getUint8(19)===63&&info.mask===63;
  const guided=info.firmware===8&&info.flags===127&&info.sensorChannel===255&&v.getUint8(19)===63&&info.mask===63;
- const selectable=[9,10,11,12,13].includes(info.firmware)&&info.flags===255&&info.sensorChannel===255&&v.getUint8(19)===info.mask&&info.mask<=63;
- info.targetOnlyRoutines=info.firmware===13;info.maxRoutinePump=info.targetOnlyRoutines?60000:2000;info.routineSpeed=[12,13].includes(info.firmware);info.pwmTests=[11,12,13].includes(info.firmware);info.sensorRangeTargets=info.firmware>=10;info.calibrationPulses=info.firmware>=10;info.channelSelection=selectable;info.availableMask=selectable?63:info.mask;
+ const selectable=[9,10,11,12,13,14].includes(info.firmware)&&info.flags===255&&info.sensorChannel===255&&v.getUint8(19)===info.mask&&info.mask<=63;
+ info.targetOnlyRoutines=[13,14].includes(info.firmware);info.maxRoutinePump=info.targetOnlyRoutines?60000:2000;info.routineSpeed=[12,13,14].includes(info.firmware);info.pwmTests=[11,12,13,14].includes(info.firmware);info.sensorRangeTargets=info.firmware>=10;info.calibrationPulses=info.firmware>=10;info.channelSelection=selectable;info.availableMask=selectable?63:info.mask;
  info.routines=guided||selectable;info.testControls=bench||guided||selectable;
  if(!info.session||(!info.mask&&!selectable)||info.mask>63||(!legacy&&!mixed&&!dual&&!six&&!bench&&!guided&&!selectable)||info.minPump<1||info.minPump>info.maxPump||info.maxPump>2000||info.maxHold>10000||info.lead!==100||info.maxRelease>10000)throw Error('Firmware settings do not match this control page.');
  info.analogChannels=selectable?Array.from({length:6},(_,ch)=>ch).filter(ch=>info.mask&(1<<ch)):six||bench||guided?[0,1,2,3,4,5]:dual?[1,2]:mixed?[1]:[];
@@ -48,7 +48,7 @@ export function decodeStatus(input,info=null){
  s.calibration=Boolean(s.flags&1);s.pwmTest=Boolean(s.flags&2);
  s.enabledMask=v.getUint8(15)===0xa9?v.getUint8(14):null;
  if(s.enabledMask!==null&&s.enabledMask>63)throw Error('Invalid enabled channels.');
- if(s.reply>9||s.reply===3||s.active>63||s.phases.some((p,ch)=>p>5||Boolean(p)!==Boolean(s.active&(1<<ch)))||packed>>18||s.routineKind>2||(v.getUint8(19)&128)&&(![1,2].includes(s.routineFault)||s.routineFaultChannel>5)||s.raw<-8388608||s.raw>8388607)throw Error('Invalid hub status received.');
+ if(s.reply>9||s.reply===3||s.active>63||s.phases.some((p,ch)=>p>5||Boolean(p)!==Boolean(s.active&(1<<ch)))||packed>>18||s.routineKind>2||(v.getUint8(19)&128)&&(![1,2,3,4,5,6,7].includes(s.routineFault)||s.routineFaultChannel>5)||s.raw<-8388608||s.raw>8388607)throw Error('Invalid hub status received.');
  s.outputs=Array.from({length:6},(_,ch)=>({pump:Boolean(s.raw&(1<<(2*ch))),valve:Boolean(s.raw&(2<<(2*ch)))}));
  s.fresh=Boolean(s.flags&2)&&Boolean(s.flags&1)&&!(s.flags&4)&&s.age<500;
  return s;

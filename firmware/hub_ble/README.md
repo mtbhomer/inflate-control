@@ -1,7 +1,8 @@
-# MeditationVest BLE v13
+# MeditationVest BLE v14
 
-BLE name: **MeditationVest**. Sensor-target sequences now pump until their target, without the old 2-second
-cutoff. Timed sequences accept longer durations that fit their zone. Per-zone
+BLE name: **MeditationVest**. A fresh ADC ceiling now stops only that channel’s
+pump; sensor-target exercises continue through their scheduled hold and release.
+Sensor-target sequences pump until their target, without a 2-second cutoff. Timed sequences accept longer durations that fit their zone. Per-zone
 speed uses the existing 100 Hz PWM output driver. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
@@ -26,7 +27,9 @@ has not been flashed or physically actuated by the assistant. Reconnect in Bluef
 after upload. Channel selection requires v9; sensor-range targets and calibration bursts
 require v10. Timed exercises require v8 or newer; sequence speed requires v12.
 Earlier firmware keeps its supported controls. Target-only sequences and longer timed sequences require v13.
-The current download is v13; `hub_ble-v12.zip` retains the previous release.
+The current download is v14; `hub_ble-v13.zip` retains the previous release.
+Upload v14 for the upper-limit behavior and sensor snapshot timing fix; refreshing
+the app alone cannot change the older firmware’s stop behavior.
 
 ## Enabled channels
 
@@ -74,7 +77,8 @@ enabled-channel selection is saved on the hub.
 The app now separates two scales. **Sequences → Target level** and live readings
 in **Zones** use a percentage of each channel's saved maximum. **Device → Sensor
 setup** continues to show the original nominal sensor-range percentage.
-This is a browser update; existing firmware v13 needs no new upload.
+The relative-percentage conversion itself works with v13. The routine-stop fixes
+in this release require a v14 upload.
 
 | Setting or reading | Meaning |
 |---|---|
@@ -111,8 +115,12 @@ Device maximums start blank and are saved per hub in this browser. They define
 calibration bursts, timed channel tests or debug patterns. Overshooting a target
 or saved maximum does not cancel a sequence; pumps stop at their targets and
 continue into hold/release. An already-reached target skips pumping. No top-up
-occurs during hold. Missing/stale (500 ms) feedback and actual ADC endpoints still
-stop and release sensor-target exercises. A plausible floating input is not
+occurs during hold. In v14, a fresh ADC ceiling is treated as reached: the
+affected pump stops, both valves follow the configured hold/release, and the
+exercise continues. A paired channel may finish reaching its own target first.
+No pump restarts on a later cue while its fresh reading remains at the ceiling.
+Missing/stale (500 ms) feedback, ADC floor, or both endpoints in one sample window
+still stop and release sensor-target exercises. A plausible floating input is not
 reliably detected. Averaging delays response; overshoot is not ruled out.
 
 ### Existing settings
@@ -192,7 +200,33 @@ Valve outputs, GPIO mapping, channel selection and sensor targets are unchanged.
 The output driver remains 100 Hz / 10 bit with no startup boost. User-reported v11 CH0
 bench trials demonstrated slower pressure rise at lower duty and smooth starts at
 25%; this is not a guarantee for every motor or simultaneous paired operation.
-No v13 routine has been physically actuated by the assistant. The relative-target UI update requires no new firmware upload.
+No v14 routine has been physically actuated by the assistant.
+
+## Unexpected routine stops (v14)
+
+The user reports that squeezing an airbag stops the scan with spoken fault guidance,
+but no visible message. No live fault packet was captured, so the exact old cause
+is not confirmed. A nominal/relative percentage above 100% was never a routine
+fault. The previous firmware did abort for any ADC upper endpoint (raw 4095, or
+one such sample in the four-sample window). V14 treats a **fresh upper endpoint**
+as reaching the sensor target, even if the separately measured millivolt value is
+lower. It stops further pumping and preserves hold, release, repeated cues and
+zone progression. This applies to sensor-target routines; manual controls,
+calibration bursts and PWM comparisons keep their existing endpoint handling.
+
+An independent concurrency bug is fixed: controlTask now copies the sensor
+snapshot before reading millis(). Previously, the sampling core could publish a
+sample newer than the earlier clock value; unsigned age subtraction then wrapped,
+causing a false stale-sensor stop. Genuine data age >=500 ms still stops routines.
+
+Exercises retains **Last stop** with the channel, firmware version and time when
+the app observed the fault. Expand it and use **Copy stop details**. It survives
+Stop, disconnection and page reload in this browser. Only the latest real hub’s
+record is kept; Preview has a separate unsaved record. Any included sensor value
+is the latest browser telemetry, which may precede the fault, not a synchronized
+fault measurement. Old firmware reports only a generic sensor fault; v14 reports
+missing data, stale data, ADC floor, or both electrical endpoints specifically.
+Prepared audio is unchanged; exact diagnostic details are on screen.
 
 ## PWM comparison test (v11 and later)
 
@@ -239,7 +273,7 @@ latches pump outputs off (detach and GPIO LOW) and releases valves; new actuatio
 requires a hub restart. There is no fallback to full power on an error. PWM duty is
 not a measured pump speed. Hardware waveform, driver heating and diode performance remain unverified.
 The user reported smooth starts at 25% on one CH0 module in v11 trials; usable
-frequency/duty ranges across all motors and v13 routines are not established.
+frequency/duty ranges across all motors and v14 routines are not established.
 
 Implementation reference: [Espressif Arduino LEDC API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/ledc.html).
 Core 3.2.1's local implementation was checked for full-on behavior; seller claims
@@ -297,7 +331,13 @@ windows may interrupt a longer prompt at the next zone. Voice quality is subject
 
 ## Firmware protocol and checks
 
-Protocol2, firmware12, flags255, enabled/analog mask0–63, sensor selector255.
+Summary byte19 keeps bit7 for routine faults and bits0–2 for channel. Bits3–6
+encode 1 = legacy unspecified sensor fault, 2 = explicit timed target timeout,
+3 = no sample, 4 = stale >=500 ms, 5 = ADC floor, 6 = ADC ceiling (reserved/legacy),
+7 = both endpoints. V14 does not emit fault6 for a fresh upper limit in a routine.
+The revised app accepts all seven; v2–v13 supported controls remain compatible.
+
+Protocol2, firmware14, flags255, enabled/analog mask0–63, sensor selector255.
 18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
 receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
 New staged commands: op5 = zone timing (aux index, mask channels, pump duration, hold,

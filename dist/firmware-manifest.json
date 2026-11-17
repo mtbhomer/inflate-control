@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v13",
+  "firmware": "MEDITATION VEST BLE v14",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -63,7 +63,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 13,
+  "firmwareRevision": 14,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -113,7 +113,7 @@
     16,
     17
   ],
-  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v13 physical test",
+  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v14 physical test",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -190,6 +190,11 @@
     "maxTimedPumpMs": 60000,
     "timedPumpMustFitZone": true,
     "invalidSensorStops": true,
+    "freshAdcCeilingStopsPumpOnly": true,
+    "ceilingKeepsHoldReleaseAndZoneProgress": true,
+    "sensorSnapshotBeforeClock": true,
+    "specificFaultReasons": true,
+    "lastStopSavedInBrowser": true,
     "targetTimeoutStops": false,
     "repeatedCuesWithinZone": true,
     "maxChannelsPerZone": 2,
@@ -218,7 +223,7 @@
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
   "previousHubPortTestsUserReportedWorking": true,
-  "v13HardwareTested": false,
+  "v14HardwareTested": false,
   "analogSensors": {
     "channels": [
       0,
@@ -248,11 +253,11 @@
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
     "BleProtocol.h": "85e3fff7d00c4349d5033255acd5ef54728760256c15a4c0d15277f6bb9943ba",
-    "HubController.h": "1379eb8bff9182de2db585602b70517d60161a07503e558e5accfe4aef90e45c",
+    "HubController.h": "5bba7ca05139ae0a68ce660fc7ab52d8d5bfbca8796529a130bf32ef17205b28",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
     "PumpOutput.h": "0acf00f9262848c834ff117f790bfda048e85ddc84c50723ad6379e9e6e7ecc3",
-    "README.md": "abc9925a62b89b4da5ed570ec8f65fae72c0d1aa912a6d419efd650af5b8e03a",
-    "hub_ble.ino": "fd5a09040c1987d475811d8148ec976ed033467043df542d76b04eb073d63888"
+    "README.md": "c20064eb762589bc257b5974b20360928f4d9fb1ce030cb4645cf03f779d1bd6",
+    "hub_ble.ino": "c0a756e3bcb35fd8cd18bfbe82b65bb0a9ba57c087dad3732436d1f93e2cbb66"
   }
 }

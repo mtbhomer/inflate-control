@@ -1,4 +1,4 @@
-import {percentMillivolts,validMaximum,levelTarget} from './sensor-profile.mjs?v=13.1';
+import {percentMillivolts,validMaximum,levelTarget} from './sensor-profile.mjs?v=14';
 export const ZONES={front:{name:'Front',code:'D',cue:'Notice gentle contact at the front of your body. Let your breathing stay natural.'},upper:{name:'Upper back',code:'B1 / C1',cue:'Bring attention to your upper back. Notice contact around your shoulders.'},middle:{name:'Middle back',code:'B2 / C2',cue:'Move attention to your middle back. Notice support and sensation.'},lower:{name:'Lower back',code:'LB',cue:'Continue to your lower back. Notice contact and relaxation in this area.'}};
 export const ROUTINE_PHASES=['Ready','Settle in','Selecting zone','Inflating to target','Notice contact','Release','Released · observe'];
 const zone=()=>({mask:0,mode:'sensor',target:null,speed:100,pump:2000,hold:1000,release:2000,window:30000});

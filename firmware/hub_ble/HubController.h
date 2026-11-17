@@ -165,7 +165,7 @@ class HubController {
     if((kind!=1&&kind!=2)||count<1||count>3||(kind==1&&count!=1)||(kind==2&&count<2)||count!=stagedCount||settle>60000||repeats>MAX_REPEATS||now-stagedAt>5000){stagedCount=0;return Reply::Invalid;}
     for(unsigned i=0;i<count;++i){
       if(!staged[i].ready){stagedCount=0;return Reply::Invalid;}
-      for(unsigned ch=0;ch<6;++ch)if(staged[i].targets[ch]&&!sensorValid(ch,now)){abortRoutine(1,ch);return Reply::Invalid;}
+      for(unsigned ch=0;ch<6;++ch)if(staged[i].targets[ch])if(const uint8_t fault=routineSensorFault(ch,now)){abortRoutine(fault,ch);return Reply::Invalid;}
     }
     routineFault=0;routine=RoutineRun{};routine.active=true;routine.settling=settle>0;routine.kind=kind;routine.count=count;
     routine.cycle=1;routine.repeats=repeats;routine.settleMs=settle;routine.started=routine.stepStarted=routine.phaseStarted=now;routine.phase=1;
@@ -232,7 +232,26 @@ class HubController {
     }
   }
   RoutineStage staged[3];uint8_t stagedCount=0;uint32_t stagedAt=0;
-  bool sensorValid(unsigned ch,uint32_t now)const{const auto&s=sensors[ch];return s.available&&now-s.sampledAt<500&&s.raw>0&&s.raw<4095&&!(s.limits&12);}
+  // Routine fault codes: 1 legacy unspecified sensor fault, 2 target timeout,
+  // 3 no sample, 4 stale, 5 ADC floor, 6 ADC ceiling, 7 both endpoints.
+  uint8_t sensorFault(unsigned ch,uint32_t now)const{
+    const auto&s=sensors[ch];
+    if(!s.available)return 3;
+    if(now-s.sampledAt>=500)return 4;
+    if(s.raw>4095)return 1; // Reject an impossible ADC value as before.
+    const bool low=s.raw==0||(s.limits&4),high=s.raw==4095||(s.limits&8);
+    return low&&high?7:low?5:high?6:0;
+  }
+  bool sensorValid(unsigned ch,uint32_t now)const{return sensorFault(ch,now)==0;}
+  // A fresh upper endpoint is sufficient to stop inflating. Keep the scheduled
+  // hold/release instead of cancelling the exercise when a bag is squeezed.
+  // Missing/stale feedback, lower endpoint or both endpoints remain faults.
+  uint8_t routineSensorFault(unsigned ch,uint32_t now)const{
+    const uint8_t fault=sensorFault(ch,now);return fault==6?0:fault;
+  }
+  bool targetReached(unsigned ch,uint16_t target,uint32_t now)const{
+    return sensorFault(ch,now)==6||sensors[ch].millivolts>=target;
+  }
   void clearOutputs(){for(auto&r:runs)r=Run{};}
   void abortRoutine(uint8_t fault,uint8_t ch){stop();routineFault=fault;routineFaultChannel=ch;}
   void setRoutinePhase(uint8_t phase,uint32_t now){routine.phase=phase;routine.phaseStarted=now;}
@@ -246,7 +265,7 @@ class HubController {
   }
   void startPulse(uint32_t now){
     const auto&s=routine.stages[routine.step];
-    for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&!sensorValid(ch,now)){abortRoutine(1,ch);return;}
+    for(unsigned ch=0;ch<6;++ch)if(s.targets[ch])if(const uint8_t fault=routineSensorFault(ch,now)){abortRoutine(fault,ch);return;}
     ++routine.pulse;routine.pumpMask=0;setRoutinePhase(2,now);renderRoutineOutputs();
   }
   void startRoutineStage(uint32_t now){
@@ -270,14 +289,14 @@ class HubController {
       }
       startRoutineStage(now);return; // Never catch up missed windows.
     }
-    if(routine.phase>=2&&routine.phase<=4)for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&!sensorValid(ch,now)){abortRoutine(1,ch);return;}
+    if(routine.phase>=2&&routine.phase<=4)for(unsigned ch=0;ch<6;++ch)if(s.targets[ch])if(const uint8_t fault=routineSensorFault(ch,now)){abortRoutine(fault,ch);return;}
     const uint32_t elapsed=now-routine.phaseStarted;
     if(routine.phase==2&&elapsed>=LEAD){
       routine.pumpMask=s.mask;
-      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].millivolts>=s.targets[ch])routine.pumpMask&=~(1<<ch);
+      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&targetReached(ch,s.targets[ch],now))routine.pumpMask&=~(1<<ch);
       setRoutinePhase(routine.pumpMask?3:4,now);
     }else if(routine.phase==3){
-      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&sensors[ch].millivolts>=s.targets[ch])routine.pumpMask&=~(1<<ch);
+      for(unsigned ch=0;ch<6;++ch)if(s.targets[ch]&&targetReached(ch,s.targets[ch],now))routine.pumpMask&=~(1<<ch);
       if(!routine.pumpMask)setRoutinePhase(4,now);
       else if(s.pumpMs&&elapsed>=s.pumpMs){
         for(unsigned ch=0;ch<6;++ch)if((routine.pumpMask&(1<<ch))&&s.targets[ch]){abortRoutine(2,ch);return;}
