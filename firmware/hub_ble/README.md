@@ -1,7 +1,7 @@
-# MeditationVest BLE v10
+# MeditationVest BLE v11
 
-BLE name: **MeditationVest**. This firmware adds nominal sensor-range percentages and cumulative
-calibration bursts to the existing exercises and controls. The working GPIO map is unchanged.
+BLE name: **MeditationVest**. This firmware adds one-channel PWM tests with sensor-based inflation-rate comparisons
+to the existing exercises and calibration controls. The working GPIO map is unchanged.
 
 | Channel | Pump | Valve | Analog sensor OUT |
 |---|---|---|---|
@@ -24,8 +24,8 @@ using the classic ESP32 target (`esp32:esp32:esp32`). The user uploads; this rel
 has not been flashed or physically actuated by the assistant. Reconnect in Bluefy
 after upload. Channel selection requires v9; sensor-range targets and calibration bursts
 require v10. Timed exercises require v8 or newer.
-Earlier firmware keeps its supported controls. The current download is v10;
-`hub_ble-v9.zip` retains the previous release.
+Earlier firmware keeps its supported controls. The current download is v11;
+`hub_ble-v10.zip` retains the previous release.
 
 ## Enabled channels
 
@@ -86,7 +86,7 @@ exercise target**, or use the calibration buttons below to find a suitable level
 and **Save current level as maximum**. For example, a full airbag reading of 8%
 saves an 8% maximum; it does not relabel that reading as 100%. Maximums start blank,
 are saved per hub in this browser, and remain separate from Preview settings.
-They constrain sensor-target exercises, not manual bursts, timed tests or patterns.
+They constrain sensor-target exercises and PWM comparisons, not manual calibration bursts, timed channel tests or patterns.
 
 Sequence targets use the same sensor percentage, from 0.1–100%. A target must be
 at or below every assigned channel's maximum. Paired channels share a percentage
@@ -128,9 +128,55 @@ to be re-established. Save the current level after the pump stops; capture round
 down to 0.1% and rejects stale data/ADC endpoints. It changes an exercise setting,
 not a rated pressure limit. No automatic repeated calibration bursts are sent.
 
-Pump outputs remain on/off at the existing power level. PWM speed control is
-technically possible with ESP32 LEDC, but driver switching frequency, pump starting
-behavior and usable duty range have not been tested; no PWM control is added here.
+## PWM comparison test (v11)
+
+Open **Device → Pump speed test**. Choose an enabled channel with a working sensor
+and a maximum saved in Sensor setup. Use the same airbag and tubing and fully vent
+between runs; compare similar starting pressures. Check the pump's flyback diode is
+fitted before PWM testing. Start at 100%, then try 80%, 60%, 40% and 25% one at a time.
+Stop if the pump stalls or stutters; do not repeat a stalled setting.
+
+**1 second is the default pump duration**, with 0.5 s and 0.25 s alternatives.
+Each click selects the valve for 100 ms, drives the pump at the chosen duty for up
+to the requested time, holds 200 ms for a final sensor sample, then releases. There
+is no cooldown or automatic repeat. The selected duty is applied from startup with
+no full-power kick-start, so the test can reveal poor starting at lower duties.
+Normal exercises, calibration increments and channel tests continue at 100% duty;
+valves remain on/off. The new duty setting does not change normal exercise settings.
+
+The ESP32 records the averaged millivolt reading just before pumping, the actual
+commanded pump interval, sample count, and the final held reading before release.
+The app converts these to nominal sensor-span percentages and computes:
+`inflation rate = (end percentage - start percentage) / pump interval in seconds`.
+The unit is **percentage points per second (pp/s)**. This is a comparison of pressure
+rise in the same setup, not motor RPM, calibrated airflow or bag-volume percentage.
+The endpoint includes 200 ms settling; this is an effective rise per pump-on second,
+not an instantaneous derivative. Sensor averaging (~80 ms), elasticity, starting
+pressure, leakage, battery voltage and pump coast-down affect the result.
+
+Pumping stops early at the saved channel maximum; these trials are marked
+**shortened**, with their actual interval shown. Starting above the maximum skips
+pumping and produces no rate. Missing/stale (500 ms) readings and ADC endpoints
+release the test. A new held sample is required for a completed result. Stop,
+disconnect, output error or missing final report produces no valid comparison rate.
+Maximums are experimental settings, not rated pressure protection; analog input
+presence and overshoot are not guaranteed by these checks.
+
+Add the observed start and sound/airflow notes to each result, then **Copy results**
+to share them. The latest 30 results per hub stay in this browser; disabled channels
+are hidden from results and exports. Preview trials are clearly simulated and
+separate from stored hardware results. No results are sent to a server.
+
+LEDC drives all six pumps at a fixed **100 Hz, 10-bit resolution**. Full-on is the
+core's continuous-high 1023 duty special case. API initialization/write failure
+latches pump outputs off (detach and GPIO LOW) and releases valves; new actuation
+requires a hub restart. There is no fallback to full power on an error. PWM duty is
+not a measured pump speed. HW-532/D4184 switching response, motor start duty, diode
+performance and usable frequency/duty range remain **physically unverified**.
+
+Implementation reference: [Espressif Arduino LEDC API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/ledc.html).
+Core 3.2.1's local implementation was checked for full-on behavior; seller claims
+about driver switching time do not establish a verified PWM rating.
 
 ## Exercise sequencing
 
@@ -184,7 +230,7 @@ windows may interrupt a longer prompt at the next zone. Voice quality is subject
 
 ## Firmware protocol and checks
 
-Protocol2, firmware10, flags255, enabled/analog mask0–63, sensor selector255.
+Protocol2, firmware11, flags255, enabled/analog mask0–63, sensor selector255.
 18-byte commands and 20-byte telemetry retain session nonce, sequence, replay and
 receive-expiry checks. Opcodes1–4 preserve pattern/stop/manual/exclusive test.
 New staged commands: op5 = zone timing (aux index, mask channels, pump max, hold,
@@ -208,6 +254,23 @@ The summary low flags bit0 marks calibration activity in v10; it must accompany
 one active channel in Select/Pump/Hold, never a routine. GPIO pin assignments and
 all existing Stop, disconnect and enabled-channel protections are unchanged.
 
+Op10 is a single PWM comparison: one enabled-channel mask, pump field250/500/1000ms,
+hold field duty25–100% in 5% steps, release field maximum201–2700mV, repeats1, aux0.
+It requires fresh sensor data and exclusive idle outputs. Summary low flags bit1
+marks PWM activity; calibration bit0 and PWM bit1 are mutually exclusive. Reply9
+means a latched pump-output failure; Stop is still accepted, but the latched fault
+remains reported until restart.
+
+PWM report0x40 is20bytes: byte2 channel,3 duty,4–5 requestedms,6–9 session,
+10–11 startmV,12–13 endmV,14–15 actualpumpms,16 result,17 samplecount,18–19 commandseq.
+Little endian; mV65535 is unavailable. Results1 select/2 pump/3 settle/4 full-duration/
+5 maximum/6 sensorfault/7 stopped/8 disconnect. Reports never acknowledge commands.
+A final report repeats for2s; the browser matches its own session/sequence and marks
+a missing final report unconfirmed. During PWM, the selected sensor uses the50ms
+analog notification slots; the native sample average still updates at~80ms. PWM
+reports replace routine/detail slots during a test and for2s afterwards. Notification
+count remains at most three per50ms; normal telemetry cadence resumes afterwards.
+
 Summary byte19 is active exercise kind1/2, 0 idle, or fault marker
 `0x80 | (fault << 3) | channel` (fault1 sensor invalid, fault2 target timeout).
 0x30 packets contain kind/phase/step/count, session, round/repeats, phase remaining,
@@ -217,9 +280,9 @@ At most three notifications per 50 ms: summary, alternating exercise/detail, ana
 Disabled channels' detail/analog slots are skipped, not reassigned.
 Nominal refresh: exercise100ms, analog channel300ms, debug detail channel600ms.
 
-Native controller/protocol/channel-selection/calibration tests and Node model/transport/audio
+Native controller/protocol/channel-selection/calibration/PWM tests and Node model/transport/audio
 tests cover these behaviors. The classic ESP32 target compiles with core3.2.1.
 Persistence is tested with a storage callback; a real power-cycle restore and
-on-device notification reduction have not been physically verified for v10.
+on-device notification reduction have not been physically verified for this release.
 Software/simulated checks do not establish physical pressure response or simultaneous
 paired-module performance. No assistant upload, BLE hardware connection or actuation.

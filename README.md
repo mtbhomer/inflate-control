@@ -1,4 +1,4 @@
-# MeditationVest control · v10
+# MeditationVest control · v11
 
 [Open the app](https://mtbhomer.github.io/inflate-control/) in Bluefy on iPhone.
 Download the matching firmware from Device and upload it yourself with actuator
@@ -28,8 +28,20 @@ saved per hub in this browser and do not rescale the sensor percentage. Old manu
 reference targets are cleared while mappings/timings are preserved. Above 100%
 does not cancel an exercise; ADC/sensor/timeout faults still stop it. This feature
 needs firmware v10, which compares measured millivolts rather than raw ADC counts.
-PWM speed control is not part of this release. The progress panel appears during an
-exercise, with no redundant selected-zone panel while idle.
+Device → **Pump speed test** adds a v11 PWM comparison. Choose a channel, duty and
+pump duration (default **1 second**). Each finite test records sensor start/end
+percentages and inflation rate in percentage points per second, holds 0.2 s for
+the final reading, then releases. A saved channel maximum is required and stops
+pumping early; shortened runs are identified. Fully vent the same bag between
+comparisons. Start at 100% and decrease duty gradually; stop at stuttering/stall.
+The frequency is 100 Hz, with no startup boost. This is a pressure-rise comparison,
+not motor RPM or calibrated airflow. Normal controls remain 100% duty and valves
+remain on/off. Add observations and Copy results. History is per hub/browser;
+Preview data is separate. See the firmware details for diode checks and limits.
+Physical PWM behavior has not yet been tested.
+
+The progress panel appears during an exercise, with no redundant selected-zone
+panel while idle.
 
 Exercises can inflate to nominal sensor-range percentages or use timed
 inflation. Each zone repeats inflate/hold/release cues for its configured duration;

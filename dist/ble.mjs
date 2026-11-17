@@ -1,4 +1,4 @@
-import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=10';
+import {UUID,decodeInfo,decodeStatus,encodeCommand} from './protocol.mjs?v=11';
 export class HubBLE extends EventTarget{
  constructor(){super();this.device=null;this.info=null;this.seq=0;this.generation=0;this.writeTail=Promise.resolve();this.waiters=new Map();this.onNotify=e=>this.status(e.target.value);this.onDisconnect=()=>this.clear('Bluetooth disconnected. Routines and channel tests switch off. Fixed-count debug patterns finish; Until Stop ends after the current cycle.');}
  emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
@@ -29,13 +29,16 @@ export class HubBLE extends EventTarget{
 
  status(value){try{
   const s=decodeStatus(value);if(!this.info||s.session!==this.info.session)return;
+  if(s.kind==='pwm'){if(!this.info.pwmTests)throw Error('Unexpected PWM report; reconnect.');if(this.info.mask&(1<<s.channel))this.emit('pwm',s);return;}
   if(s.kind==='routine'){if(!this.info.routines)throw Error('Unexpected routine status; reconnect.');this.emit('routine',s);return;}
   if(s.kind==='analog'){if(this.info.channelSelection&&!(this.info.mask&(1<<s.channel)))return;if(!this.info.analogChannels?.includes(s.channel))throw Error('Unexpected analog sensor; reconnect.');this.emit('analog',s);return;}
   if(s.kind==='detail'){if(this.info.channelSelection&&!(this.info.mask&(1<<s.channel)))return;if(s.phase===5&&!this.info.testControls)throw Error('Unexpected test status; reconnect.');if(!(this.info.mask&(1<<s.channel))||(s.group&~this.info.mask))throw Error('Channel configuration changed; reconnect.');this.emit('detail',s);return;}
   if(this.info.channelSelection){
    if(s.enabledMask===null||(s.enabledMask&~this.info.availableMask)||(s.active&~s.enabledMask))throw Error('Invalid channel configuration; reconnect.');
   }else if(s.reply===8)throw Error('Unexpected settings response; reconnect.');
-  if(this.info.testControls&&((this.info.calibrationPulses?s.flags>1:s.flags!==0)||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
+  if(this.info.testControls&&((this.info.pwmTests?s.flags>2:this.info.calibrationPulses?s.flags>1:s.flags!==0)||s.raw<0||s.raw>4095))throw Error('Invalid output state; reconnect.');
+  if(s.reply===9&&!this.info.pwmTests)throw Error('Unexpected output error; reconnect.');
+  if(this.info.pwmTests&&s.pwmTest&&(!s.active||(s.active&(s.active-1))||s.routineKind||s.phases.some(p=>p>3)))throw Error('Invalid PWM test state; reconnect.');
   if(this.info.calibrationPulses&&s.calibration&&(!s.active||(s.active&(s.active-1))||s.routineKind||s.phases.some(p=>p>3)))throw Error('Invalid calibration state; reconnect.');
   if(this.info.testControls&&s.phases.some((phase,ch)=>{const bits=(s.raw>>(2*ch))&3;return phase===5?bits===0:bits!==([0,2,3,2,0][phase]);}))throw Error('Output states disagree with channel phases; reconnect.');
   if(!this.info.testControls&&s.phases.includes(5))throw Error('Unexpected manual test status; reconnect.');

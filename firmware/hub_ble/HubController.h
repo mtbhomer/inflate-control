@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 enum class Phase:uint8_t { Off=0, Select=1, Pump=2, Hold=3, Release=4, Manual=5 };
-enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Invalid=4, Disabled=5, Stopped=6, Expired=7, StorageFailed=8 };
+enum class Reply:uint8_t { None=0, Accepted=1, Busy=2, Invalid=4, Disabled=5, Stopped=6, Expired=7, StorageFailed=8, OutputFailed=9 };
 struct Run {
  Phase phase=Phase::Off;
  uint8_t group=0;
@@ -9,6 +9,7 @@ struct Run {
  uint32_t started=0;
  bool manualPump=false,manualValve=false;
  bool calibration=false;
+ bool pwmTest=false;uint8_t dutyPercent=100;
  uint32_t pumpStarted=0,valveStarted=0;
 };
 struct SensorFeedback {uint16_t raw=0;uint32_t sampledAt=0;uint8_t limits=0;bool available=false;uint16_t millivolts=0;};
@@ -19,6 +20,11 @@ struct RoutineRun {
  uint16_t cycle=0,repeats=1,settleMs=0,pulse=0;
  uint32_t started=0,stepStarted=0,phaseStarted=0;
  RoutineStage stages[3];
+};
+struct PwmTrial {
+ bool active=false;uint8_t channel=0,duty=0,result=0,finishReason=4,samples=0;
+ uint16_t duration=0,actualMs=0,startMv=65535,endMv=65535,limitMv=0,sequence=0;
+ uint32_t phaseAt=0,pumpAt=0,lastSampleAt=0,sampleAtStop=0;
 };
 class HubController {
  public:
@@ -34,9 +40,11 @@ class HubController {
   }
   Run runs[6];
   RoutineRun routine;
+  PwmTrial pwmTrial;
   SensorFeedback sensors[6];
   uint8_t routineFault=0,routineFaultChannel=0;
   void update(uint32_t now) {
+    lastTick=now;if(pwmTrial.active){advancePwm(now);return;}
     advanceRoutine(now);
     if(routine.active)return;
     for(auto&r:runs){
@@ -68,7 +76,7 @@ class HubController {
     // Group start is atomic: a busy member rejects the entire request.
     if(mask&activeMask())return Reply::Busy;
     for(uint8_t ch=0;ch<6;++ch)if(mask&(1<<ch)){
-      auto&r=runs[ch];r.calibration=false;r.phase=Phase::Select;r.group=mask;r.pumpMs=pump;r.holdMs=hold;r.releaseMs=release;r.repeats=repeats;r.cycle=1;r.started=now;
+      auto&r=runs[ch];r.calibration=false;r.pwmTest=false;r.dutyPercent=100;r.phase=Phase::Select;r.group=mask;r.pumpMs=pump;r.holdMs=hold;r.releaseMs=release;r.repeats=repeats;r.cycle=1;r.started=now;
     }
     return Reply::Accepted;
   }
@@ -85,7 +93,7 @@ class HubController {
     // An unchanged ON state never renews its timer when the other switch changes.
     if(pumpOn&&!r.manualPump)r.pumpStarted=now;
     if(valveOn&&!r.manualValve)r.valveStarted=now;
-    r.calibration=false;r.manualPump=pumpOn;r.manualValve=valveOn;r.group=mask;r.cycle=1;
+    r.calibration=false;r.pwmTest=false;r.dutyPercent=100;r.manualPump=pumpOn;r.manualValve=valveOn;r.group=mask;r.cycle=1;
     r.pumpMs=MAX_PUMP;r.holdMs=MAX_HOLD;r.releaseMs=0;r.repeats=1;
     r.phase=pumpOn||valveOn?Phase::Manual:Phase::Off;
     testChannel=pumpOn||valveOn?int8_t(ch):-1;
@@ -100,6 +108,21 @@ class HubController {
     return result;
   }
   bool calibrating()const{return testChannel>=0&&runs[testChannel].calibration&&runs[testChannel].phase!=Phase::Off;}
+  bool pwmTesting()const{return testChannel>=0&&runs[testChannel].pwmTest&&runs[testChannel].phase!=Phase::Off;}
+  uint8_t pumpPercent(unsigned ch)const{return pump(ch)?runs[ch].dutyPercent:0;}
+  Reply testPwm(uint8_t mask,uint16_t duration,uint16_t duty,uint16_t limitMv,uint32_t now){
+    update(now);
+    if(!mask||mask>63||(mask&(mask-1))||(duration!=250&&duration!=500&&duration!=1000)||duty<25||duty>100||duty%5||limitMv<=200||limitMv>2700)return Reply::Invalid;
+    if(mask&~enabled)return Reply::Disabled;
+    if(activeMask()||routine.active)return Reply::Busy;
+    unsigned ch=0;while(!(mask&(1<<ch)))++ch;
+    if(!sensorValid(ch,now))return Reply::Invalid;
+    clearStagedRoutine();routineFault=0;
+    auto&r=runs[ch];r=Run{};r.pwmTest=true;r.dutyPercent=duty;r.group=mask;r.pumpMs=duration;r.holdMs=200;r.releaseMs=0;r.started=now;r.cycle=1;r.phase=Phase::Select;testChannel=ch;
+    pwmTrial=PwmTrial{};auto&t=pwmTrial;t.active=true;t.channel=ch;t.duty=duty;t.duration=duration;t.limitMv=limitMv;t.result=1;t.phaseAt=now;
+    return Reply::Accepted;
+  }
+  void clearPwmReport(){if(!pwmTrial.active)pwmTrial=PwmTrial{};}
   Reply calibrationPulse(uint8_t mask,uint16_t duration,uint32_t now){
     update(now);
     if(!mask||mask>63||(mask&(mask-1))||(duration!=100&&duration!=1000))return Reply::Invalid;
@@ -152,8 +175,9 @@ class HubController {
     const uint32_t elapsed=now-(phase==6?routine.stepStarted:routine.phaseStarted);return elapsed<duration?duration-elapsed:0;
   }
   void clearStagedRoutine(){stagedCount=0;}
-  void stop(){for(auto&r:runs){r.phase=Phase::Off;r.manualPump=false;r.manualValve=false;}testChannel=-1;routine.active=false;routineFault=0;stagedCount=0;}
+  void stop(){if(pwmTrial.active)finishPwm(7,lastTick);for(auto&r:runs){r.phase=Phase::Off;r.manualPump=false;r.manualValve=false;}testChannel=-1;routine.active=false;routineFault=0;stagedCount=0;}
   void endContinuous(){
+    if(pwmTrial.active)finishPwm(8,lastTick);
     stagedCount=0;
     if(routine.active)stop();
     if(testChannel>=0){auto&r=runs[testChannel];r.phase=Phase::Off;r.manualPump=false;r.manualValve=false;testChannel=-1;}
@@ -168,12 +192,38 @@ class HubController {
   uint16_t remaining(uint8_t ch,uint32_t now)const {
     const auto&r=runs[ch];if(r.phase==Phase::Off)return 0;
     if(routine.active)return routineRemaining(now);
+    if(r.pwmTest&&pwmTrial.active){const uint32_t duration=r.phase==Phase::Select?LEAD:r.phase==Phase::Pump?pwmTrial.duration:200,elapsed=now-pwmTrial.phaseAt;return elapsed<duration?duration-elapsed:0;}
     if(r.phase==Phase::Manual){const uint32_t pe=now-r.pumpStarted,ve=now-r.valveStarted;const uint16_t p=r.manualPump&&pe<MAX_PUMP?MAX_PUMP-pe:0,v=r.manualValve&&ve<MAX_HOLD?MAX_HOLD-ve:0;return p>v?p:v;}
     const uint32_t elapsed=now-r.started;
     const uint32_t end=r.phase==Phase::Release?r.releaseMs:r.phase==Phase::Select?LEAD:r.phase==Phase::Pump?uint32_t(LEAD)+r.pumpMs:uint32_t(LEAD)+r.pumpMs+r.holdMs;
     return elapsed<end?end-elapsed:0;
   }
  private:
+  uint32_t lastTick=0;
+  void finishPwm(uint8_t result,uint32_t now){
+    auto&t=pwmTrial;if(!t.active)return;
+    if(t.result==2){const uint32_t elapsed=now-t.pumpAt;t.actualMs=elapsed>65535?65535:uint16_t(elapsed);}
+    t.result=result;t.active=false;runs[t.channel].phase=Phase::Off;testChannel=-1;
+  }
+  void advancePwm(uint32_t now){
+    auto&t=pwmTrial;auto&r=runs[t.channel];const auto&s=sensors[t.channel];
+    if(!sensorValid(t.channel,now)){finishPwm(6,now);return;}
+    if(t.result==1){
+      if(now-t.phaseAt<LEAD)return;
+      t.startMv=t.endMv=s.millivolts;t.lastSampleAt=s.sampledAt;t.samples=1;t.phaseAt=t.pumpAt=now;
+      if(s.millivolts>=t.limitMv){t.finishReason=5;t.sampleAtStop=s.sampledAt;t.result=3;r.phase=Phase::Hold;}
+      else{t.result=2;r.phase=Phase::Pump;}
+      return;
+    }
+    if(s.sampledAt!=t.lastSampleAt){t.lastSampleAt=s.sampledAt;t.endMv=s.millivolts;if(t.samples<255)++t.samples;}
+    if(t.result==2){
+      const uint32_t elapsed=now-t.pumpAt;t.actualMs=elapsed>65535?65535:uint16_t(elapsed);
+      if(s.millivolts>=t.limitMv||elapsed>=t.duration){t.finishReason=s.millivolts>=t.limitMv?5:4;t.result=3;t.phaseAt=now;t.sampleAtStop=s.sampledAt;r.phase=Phase::Hold;}
+    }else if(t.result==3&&now-t.phaseAt>=200){
+      if(s.sampledAt==t.sampleAtStop){finishPwm(6,now);return;}
+      t.endMv=s.millivolts;finishPwm(t.finishReason,now);
+    }
+  }
   RoutineStage staged[3];uint8_t stagedCount=0;uint32_t stagedAt=0;
   bool sensorValid(unsigned ch,uint32_t now)const{const auto&s=sensors[ch];return s.available&&now-s.sampledAt<500&&s.raw>0&&s.raw<4095&&!(s.limits&12);}
   void clearOutputs(){for(auto&r:runs)r=Run{};}

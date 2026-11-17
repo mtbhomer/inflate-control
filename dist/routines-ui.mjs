@@ -1,7 +1,7 @@
-import {SENSOR_PROFILE,sensorPercent,validMaximum,cleanSensorOptions} from './sensor-profile.mjs?v=10';
-import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=10';
-import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine} from './routines.mjs?v=10';
-import {analogReading} from './sensor.mjs?v=10';
+import {SENSOR_PROFILE,sensorPercent,validMaximum,cleanSensorOptions} from './sensor-profile.mjs?v=11';
+import {GuidancePlayer,GUIDANCE} from './guidance.mjs?v=11';
+import {ZONES,ROUTINE_PHASES,defaultRoutines,cleanRoutines,zoneIds,channels,buildRoutine} from './routines.mjs?v=11';
+import {analogReading} from './sensor.mjs?v=11';
 const $=id=>document.getElementById(id);
 const text=(id,v)=>{if($(id).textContent!==v)$(id).textContent=v;};
 const seconds=ms=>(ms/1000).toFixed(1).replace(/\.0$/,'');
@@ -29,7 +29,7 @@ export class RoutineUI{
    <section class="routine-session"><div class="section-top"><h3>Session</h3><button id="routine-short" class="text-button">Short test timings</button></div><div class="session-grid">${input('routine-settle','Start delay',5,0,60)}<label class="routine-field" for="routine-repeat"><span>Repeat</span><select id="routine-repeat"><option value="once">Once</option><option value="count">Set rounds</option><option value="forever">Until Stop</option></select></label><label id="routine-count-label" class="routine-field" for="routine-count"><span>Total rounds</span><div class="number-field"><input id="routine-count" type="number" inputmode="numeric" min="1" max="999" step="1" value="3"></div></label></div>
     <div class="voice-option"><label><input id="routine-voice" type="checkbox"> Spoken guidance</label><button id="voice-preview" class="text-button">Preview voice</button></div><div class="session-grid"><label class="routine-field" for="voice-choice"><span>Guidance voice</span><select id="voice-choice"><option value="sarah">Sarah · prepared audio</option><option value="lily">Lily · prepared audio</option><option value="device">Device voice</option></select></label><label class="routine-field" for="voice-rate"><span>Speaking speed</span><select id="voice-rate"><option value="0.85">Slower · 0.85×</option><option value="1">Natural · 1×</option><option value="1.15">Faster · 1.15×</option></select></label></div><label id="device-voice-label" class="routine-field" for="device-voice" hidden><span>Voice on this device</span><select id="device-voice"></select></label><p id="voice-note" class="footnote"></p>
     <div id="routine-zone-summary" class="routine-zone-summary"></div><div id="routine-timeline" class="routine-timeline" aria-label="Routine order"></div><p id="routine-estimate" class="footnote"></p>
-    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=10" download>Download v10</a>. Your existing controls are under Device → Channel tests.</p>
+    <p id="routine-validation" class="routine-validation" role="status"></p><p id="routine-upgrade" class="message" hidden>Guided routines need firmware v8 or newer. <a href="hub_ble.zip?v=11" download>Download v11</a>. Your existing controls are under Device → Channel tests.</p>
     <button id="routine-start" class="routine-start" disabled>Start breathing routine <span aria-hidden="true">→</span></button><p class="footnote">Keep Bluefy open for live guidance. Stop or Bluetooth disconnection releases the routine. Sensor targets stop each pump; the 2 s limit stops and releases the routine if a target is not reached.</p>
    </section>`;
   $('zones').innerHTML='<div class="routine-intro"><p class="eyebrow">MAP & ADJUST</p><h2>Zone mapping</h2><p id="zone-routine-title"></p><div class="sequence-picker" role="group" aria-label="Vest side"><button id="map-front" aria-pressed="true">Front</button><button id="map-back" aria-pressed="false">Back</button></div></div>';

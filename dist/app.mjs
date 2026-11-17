@@ -1,10 +1,12 @@
-import {sensorPercent} from './sensor-profile.mjs?v=10';
-import {Reconnector} from './reconnect.mjs?v=10';
-import {HubBLE} from './ble.mjs?v=10';
-import {PHASES,REPLIES} from './protocol.mjs?v=10';
-import {sensorRange,validZero,analogReading} from './sensor.mjs?v=10';
-import {RoutineUI} from './routines-ui.mjs?v=10';
-import {RoutinePreview} from './routines.mjs?v=10';
+import {PwmUI} from './pwm-ui.mjs?v=11';
+import {PwmPreview} from './pwm-test.mjs?v=11';
+import {sensorPercent,percentMillivolts} from './sensor-profile.mjs?v=11';
+import {Reconnector} from './reconnect.mjs?v=11';
+import {HubBLE} from './ble.mjs?v=11';
+import {PHASES,REPLIES} from './protocol.mjs?v=11';
+import {sensorRange,validZero,analogReading} from './sensor.mjs?v=11';
+import {RoutineUI} from './routines-ui.mjs?v=11';
+import {RoutinePreview} from './routines.mjs?v=11';
 const $=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=$(id);if(el.textContent!==value)el.textContent=value;};
 const hub=new HubBLE();
@@ -19,6 +21,7 @@ let testMode=true;
 let lastChannelView={mask:63,deviceId:null};
 try{const saved=JSON.parse(localStorage.getItem('inflate.channels.v1'));if(typeof saved?.deviceId==='string'&&Number.isInteger(saved.mask)&&saved.mask>=0&&saved.mask<=63)lastChannelView=saved;}catch{}
 let channelDraft=lastChannelView.mask;
+let simPwm=null,previewPwmSeq=0;
 let routineState=null,simRoutine=null,simFault=0,simFaultChannel=0;
 let linked=false,pairChannels=[1,2],details=Array(6).fill(null),simRuns=Array(6).fill(null);
 const analogStates=Array(6).fill(null);
@@ -47,7 +50,7 @@ function renderChannelOptions(fresh){
 function message(text){setText('message',text);$('message').hidden=!text;}
 function fields(id,t){return `<div class="timings"><div class="timing"><label for="pump-${id}">Pump time</label><div class="number-field"><input id="pump-${id}" type="number" required inputmode="decimal" min="0.05" max="2" step="0.05" value="${t.pump/1000}"><span>s</span></div><small>0.05–2 seconds</small></div><div class="timing"><label for="hold-${id}">Hold before release</label><div class="number-field"><input id="hold-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.hold/1000}"><span>s</span></div><small>0–10 seconds</small></div></div><button class="run" id="run-${id}" disabled>Run once</button><button class="stop-control channel-stop" id="stop-${id}" data-stop hidden disabled><span class="stop-icon" aria-hidden="true"></span>Stop all & release</button><details class="pattern-settings" id="pattern-${id}"><summary>Repeat pattern <span aria-hidden="true">＋</span></summary><div class="timings"><div class="timing"><label for="release-${id}">Released between cycles</label><div class="number-field"><input id="release-${id}" type="number" required inputmode="decimal" min="0" max="10" step="0.1" value="${t.release/1000}"><span>s</span></div><small>0–10 seconds · valve off</small></div><div class="timing"><label for="mode-${id}">Repeat</label><select id="mode-${id}"><option value="count" ${t.mode==='count'?'selected':''}>Set count</option><option value="forever" ${t.mode==='forever'?'selected':''}>Until Stop</option></select><div id="count-field-${id}" class="count-field"><label for="count-${id}">Total cycles</label><div class="number-field"><input id="count-${id}" type="number" required inputmode="numeric" min="1" max="999" step="1" value="${t.count}"></div></div></div></div><p class="footnote" id="repeat-note-${id}"></p><button class="run pattern-run" id="repeat-${id}" disabled>Start pattern</button></details>`;}
 function bindFields(id){for(const key of ['pump','hold','release','count','mode'])$(`${key}-${id}`).addEventListener('change',()=>{saveTimes(id);render();});$(`run-${id}`).addEventListener('click',()=>run(id,false));$(`repeat-${id}`).addEventListener('click',()=>run(id,true));}
-function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor level</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=10" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} sensor range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · sensor minimum</span><span>100% · sensor maximum</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">Nominal sensor range, not air volume or a pressure safety limit. A disconnected input can still produce readings.</p></details></section>`;}
+function analogCard(ch){const id=`analog-${ch}`;return `<section id="${id}Panel" class="sensor analog" aria-label="Channel ${ch} sensor"><div class="section-top"><h4>Sensor level</h4><span id="${id}State" class="quiet">Waiting for hub</span></div><div class="reading"><strong id="${id}Value">—</strong><span>CH${ch} · analog input</span></div><p id="${id}Upgrade" class="footnote" hidden><a href="hub_ble.zip?v=11" download>Install the six-channel firmware</a> for this input.</p><div id="${id}Meter" class="range-meter" role="meter" aria-label="CH${ch} sensor range used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="${id}Fill"></span></div><div class="range-labels"><span>0% · sensor minimum</span><span>100% · sensor maximum</span></div><details><summary>Voltage graph & details</summary><svg viewBox="0 0 360 112" role="img" aria-label="CH${ch} voltage, last thirty seconds"><path d="M32 8H360M32 56H360M32 104H360" class="gridlines"/><g class="axis-labels"><text x="0" y="12">3.3 V</text><text x="0" y="60">1.65 V</text><text x="10" y="108">0 V</text></g><path id="${id}ChartLine" fill="none" stroke="#32765e" stroke-width="2.5"/><text id="${id}ChartEmpty" x="190" y="61" text-anchor="middle">Live voltage appears here</text></svg><div class="chart-footer"><span>30 seconds</span><span id="${id}Age">CH${ch} · display only</span></div><p id="${id}Raw" class="analog-raw"></p><p class="footnote">Nominal sensor range, not air volume or a pressure safety limit. A disconnected input can still produce readings.</p></details></section>`;}
 function testControls(ch){return `<div class="test-controls" id="test-controls-${ch}"><div class="test-switches">${['pump','valve'].map(role=>`<button type="button" role="switch" aria-checked="false" aria-label="Channel ${ch} ${role}" id="test-${role}-${ch}" class="output-switch"><span>${role==='pump'?'Pump':'Valve'}</span><span class="switch-track" aria-hidden="true"></span><strong id="test-${role}-state-${ch}">Off</strong></button>`).join('')}</div><p class="footnote">Independent switches · pump max 2 s · valve max 10 s.<br>States are commanded outputs; confirm the physical response.</p></div>`;}
 function cards(){for(let ch=0;ch<6;ch++){
  const node=document.createElement('article');node.className='channel';node.id=`channel-${ch}`;
@@ -61,8 +64,8 @@ function pairChoices(){const enabled=Array.from({length:6},(_,ch)=>ch).filter(ch
  $('linkPanel').hidden=testMode||enabled.length<2;
 }
 function saveTimes(id){const t=id==='pair'?pair:settings[id];for(const key of ['pump','hold','release','count']){const el=$(`${key}-${id}`);if(el.value!==''&&el.checkValidity())t[key]=key==='count'?Number(el.value):Math.round(Number(el.value)*1000);}t.mode=$(`mode-${id}`).value;try{localStorage.setItem('inflate.patterns.v2',JSON.stringify({channels:settings,pair}));}catch{}}
-function usable(){return online&&status&&performance.now()-received<1000;}
-function telemetry(s){status=s;received=performance.now();staleShown=false;
+function usable(){return online&&status&&status.reply!==9&&performance.now()-received<1000;}
+function telemetry(s){status=s;received=performance.now();staleShown=false;if(s.reply===9){pwm.uncertain('Pump output error; rate unavailable');message(REPLIES[9]);}
  if(s.fresh&&received-lastHistory>=80){history.push({t:received,y:s.raw});lastHistory=received;}
  history=history.filter(p=>received-p.t<30000);render();
 }
@@ -150,7 +153,7 @@ function render(){
  setText('sampleAge',sensorFresh?`${Math.round(status.age)} ms · CH2 only`:'CH2 sensor only');setText('rawValue',sensorFresh?`Raw ${number.format(status.raw)}`:'');
  $('zero').disabled=!sensorFresh||Boolean(active)||!validZero(status?.raw);$('clearZero').hidden=baseline===null;
  $('sensorPanel').hidden=!online||info?.hxChannel!==2;
- for(const ch of CHANNELS)renderAnalog(ch,fresh);drawChart();routines.render();
+ for(const ch of CHANNELS)renderAnalog(ch,fresh);drawChart();routines.render();pwm.render();
 }
 function drawChart(){const now=performance.now(),pts=baseline===null?[]:history.filter(p=>now-p.t<=30000);$('chartEmpty').style.display=pts.length>1?'none':'';setText('chartEmpty',baseline===null?'Set vented zero to start the chart':'Live readings appear here');
  if(pts.length<2){$('chartLine').setAttribute('d','');$('chartArea').setAttribute('d','');return;}
@@ -189,7 +192,7 @@ async function toggleOutput(ch,role){
 }
 for(const mode of ['test','patterns'])$(`mode-${mode}`).addEventListener('click',()=>{if(pending||stopPending||status?.routineKind||(online&&(!usable()||status.active)))return;testMode=mode==='test';message('');render();});
 async function stop(){if(!online||stopPending)return;stopPending=true;routines.cancelVoice();render();
- try{if(demo){simRoutine=null;routineState=null;simFault=0;simRuns.fill(null);tickDemo();message('Preview: all outputs stopped and released.');}
+ try{if(demo){if(simPwm){simPwm.stopped=true;pwm.receive(simPwm.tick(performance.now()));simPwm=null;}simRoutine=null;routineState=null;simFault=0;simRuns.fill(null);tickDemo();message('Preview: all outputs stopped and released.');}
  else{const s=await hub.command(2);message(s.reply===6?'All outputs OFF · all patterns stopped.':REPLIES[s.reply]||'Check hub status.');}}
  catch(e){message(e.message);}finally{stopPending=false;render();}
 }
@@ -198,24 +201,26 @@ hub.addEventListener('ready',e=>{reconnector.remember(hub.device);routines.setDe
 hub.addEventListener('configuration',e=>channelsChanged(e.detail));
 hub.addEventListener('status',e=>telemetry(e.detail));
 hub.addEventListener('analog',e=>analogTelemetry(e.detail));
+hub.addEventListener('pwm',e=>pwm.receive(e.detail));
 hub.addEventListener('routine',e=>{routineState={...e.detail,received:performance.now()};render();});
 hub.addEventListener('detail',e=>{details[e.detail.channel]={...e.detail,received:performance.now()};render();});
 hub.addEventListener('error',e=>message(e.detail));
-hub.addEventListener('disconnected',e=>{online=false;info=null;channelDraft=lastChannelView.mask;status=null;routineState=null;routines.cancelVoice();baseline=null;resetAnalog();details.fill(null);setText('deviceName','MeditationVest');setText('connectionHint','');message(e.detail);render();reconnector.schedule();});
+hub.addEventListener('disconnected',e=>{pwm.uncertain('Bluetooth disconnected; final measurement unconfirmed');online=false;info=null;channelDraft=lastChannelView.mask;status=null;routineState=null;routines.cancelVoice();baseline=null;resetAnalog();details.fill(null);setText('deviceName','MeditationVest');setText('connectionHint','');message(e.detail);render();reconnector.schedule();});
 document.addEventListener('click',e=>{if(e.target.closest('[data-stop]'))stop();});
 $('zero').addEventListener('click',()=>{if(!usable()||!status.fresh||status.active||!validZero(status.raw))return;baseline=status.raw;history=[];message('Vented zero set. 100% is the digital clipping limit, not a pressure or inflation target.');render();});
 $('clearZero').addEventListener('click',()=>{baseline=null;history=[];render();});
 for(let i=0;i<2;i++)$(`link-${i}`).addEventListener('change',()=>{pairChannels[i]=Number($(`link-${i}`).value);render();});
 $('linkToggle').addEventListener('click',()=>{if(pending||status?.routineKind||(online&&!usable())||(status?.active&pairMask())||pairChannels[0]===pairChannels[1])return;linked=!linked;message(linked?'Boards linked. Use the shared times below; both start and release together.':'Boards unlinked. Their individual settings are restored.');render();});
 $('preview').addEventListener('click',()=>{
- if(demo){demo=false;online=false;resetAnalog();info=null;channelDraft=lastChannelView.mask;status=null;routineState=null;simRoutine=null;routines.cancelVoice();history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','');render();return;}
+ if(demo){pwm.uncertain('Preview ended before final reading');simPwm=null;demo=false;online=false;resetAnalog();info=null;channelDraft=lastChannelView.mask;status=null;routineState=null;simRoutine=null;routines.cancelVoice();history=[];baseline=null;simRuns.fill(null);details.fill(null);message('');setText('deviceName','MeditationVest');setText('connectionHint','');render();return;}
  if(online||connecting)return;
- reconnector.suspend();simFault=0;demo=true;online=true;resetAnalog();info={mask:lastChannelView.mask,availableMask:63,channelSelection:true,firmware:10,testControls:true,routines:true,sensorRangeTargets:true,calibrationPulses:true,analogChannels:CHANNELS.filter(ch=>lastChannelView.mask&(1<<ch)),hxChannel:null};channelDraft=info.mask;routineState=null;simRoutine=null;baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','MeditationVest');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
+ reconnector.suspend();simFault=0;demo=true;online=true;resetAnalog();info={mask:lastChannelView.mask,availableMask:63,channelSelection:true,firmware:11,pwmTests:true,testControls:true,routines:true,sensorRangeTargets:true,calibrationPulses:true,analogChannels:CHANNELS.filter(ch=>lastChannelView.mask&(1<<ch)),hxChannel:null};channelDraft=info.mask;routineState=null;simRoutine=null;baseline=null;history=[];details.fill(null);simRuns.fill(null);pairChoices();setText('deviceName','MeditationVest');setText('connectionHint','Preview only. No Bluetooth commands are sent.');message('Preview mode · simulated readings and cycles.');tickDemo();
 });
-function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).fill(0);let active=0,simAnalog=null;
+function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).fill(0);let active=0,simAnalog=null,pwmSnapshot=null;
+ if(simPwm){pwmSnapshot=simPwm.tick(now);pwm.receive(pwmSnapshot);if(simPwm.done){simRuns[simPwm.channel]=null;simPwm=null;}else{const p=pwmSnapshot;simRuns[p.channel]={pwmOwned:true,phase:p.result,pump:p.duration,hold:200,release:0,repeats:1,cycle:1,group:1<<p.channel};}}
  if(simRoutine){const snapshot=simRoutine.tick(now);simRuns=snapshot.runs;simAnalog=snapshot.analogRaw;simFault=snapshot.fault;simFaultChannel=snapshot.faultChannel;routineState={...snapshot.routine,received:now};if(snapshot.complete)simRoutine=null;}
  for(let ch=0;ch<6;ch++){let r=simRuns[ch];if(!r)continue;
-  if(r.routineOwned){phases[ch]=r.phase;active|=1<<ch;details[ch]={...r,received:now};continue;}
+  if(r.routineOwned||r.pwmOwned){phases[ch]=r.phase;active|=1<<ch;details[ch]={...r,received:now};continue;}
   if(r.phase===5){if(r.pumpOn&&now-r.pumpStarted>=2000)r.pumpOn=false;if(r.valveOn&&now-r.valveStarted>=10000)r.valveOn=false;if(!r.pumpOn&&!r.valveOn){simRuns[ch]=null;continue;}phases[ch]=5;active|=1<<ch;details[ch]={...r,received:now,remaining:0};continue;}
   let elapsed=now-r.start;const total=100+r.pump+r.hold;
   if(r.phase===4){if(elapsed>=r.release&&elapsed>0){r.phase=1;r.start=now;r.cycle++;elapsed=0;}}
@@ -227,11 +232,11 @@ function tickDemo(){if(!demo)return;const now=performance.now(),phases=Array(6).
  const r=simRuns[2],rise=r&&r.phase!==4?(r.phase===1?0:r.phase===2?Math.min(1,(now-r.start-100)/r.pump):1):0;
  const raw=Math.min(8388607,Math.round(1764600+Math.sin(now/950)*90+rise*6624100));
  const outputs=CHANNELS.map(ch=>({pump:phases[ch]===5?simRuns[ch].pumpOn:phases[ch]===2,valve:phases[ch]===5?simRuns[ch].valveOn:[1,2,3].includes(phases[ch])}));
- telemetry({kind:'summary',calibration:simRuns.some(r=>r?.calibration),outputs,active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true,routineKind:routineState?.routineKind??0,routineFault:simFault,routineFaultChannel:simFaultChannel});
+ telemetry({kind:'summary',pwmTest:Boolean(simPwm),calibration:simRuns.some(r=>r?.calibration),outputs,active,phases,flags:3,reply:0,seq:0,raw,age:20,fresh:true,routineKind:routineState?.routineKind??0,routineFault:simFault,routineFaultChannel:simFaultChannel});
  for(const ch of CHANNELS){
   if(!(enabledMask()&(1<<ch)))continue;
   const a=simRuns[ch],level=a?.calibration?(a.phase===1?a.calibrationBase:a.phase===2?a.calibrationBase+(a.calibrationLevel-a.calibrationBase)*Math.min(1,(now-a.start-100)/a.pump):a.calibrationLevel):a?.phase===5?(a.pumpOn ? .5 : a.valveOn ? .2 : 0):a&&a.phase!==4?(a.phase===1?0:a.phase===2?Math.min(1,(now-a.start-100)/a.pump):1):0;
-  const mv=simAnalog?Math.round(simAnalog[ch]/4095*3100):Math.round(200+level*2500+Math.sin(now/800+ch)*3);
+  const mv=pwmSnapshot?.channel===ch&&pwmSnapshot.result<=3?(pwmSnapshot.endMv===65535?203:pwmSnapshot.endMv):simAnalog?Math.round(simAnalog[ch]/4095*3100):Math.round(200+level*2500+Math.sin(now/800+ch)*3);
   analogTelemetry({kind:'analog',channel:ch,flags:3,raw:simAnalog?.[ch]??Math.round(mv/3100*4095),millivolts:mv,age:20,fresh:true});
  }
 }
@@ -247,7 +252,18 @@ async function startRoutine(plan){
 const reconnector=new Reconnector({bluetooth:navigator.bluetooth,current:()=>hub.device,canAttempt:()=>!online&&!connecting&&!demo&&!document.hidden,connect:async device=>{connecting=true;render();try{await hub.connect(device);}finally{connecting=false;render();}},notice:hint=>setText('reconnect-hint',hint)});
 $('auto-connect').checked=reconnector.enabled;$('auto-connect').addEventListener('change',()=>{reconnector.setEnabled($('auto-connect').checked);setText('reconnect-hint',reconnector.enabled?'Reconnection enabled for your selected hub. First use still needs Connect.':'Automatic reconnection is off.');});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)reconnector.cancel();else reconnector.schedule(0);});
+async function startPwm(config){
+ if(!pwm.allowed()||pending||stopPending)return;
+ pending=true;message('');
+ const seq=demo?++previewPwmSeq:hub.seq+1,session=demo?1:info.session;
+ pwm.begin(config,seq,session);render();
+ try{
+  if(demo){simPwm=new PwmPreview(config,performance.now(),seq);tickDemo();}
+  else{const result=await hub.command(10,1<<config.channel,config.duration,config.duty,percentMillivolts(config.maximum),1);if(result.reply!==1){pwm.uncertain(REPLIES[result.reply]||'Start not accepted');throw Error(REPLIES[result.reply]||'Start not accepted');}}
+ }catch(e){message(e.message);}finally{pending=false;render();}
+}
 const routines=new RoutineUI({context:routineContext,start:startRoutine,pulse:calibrationPulse,changed:render});
+const pwm=new PwmUI({context:()=>({...routineContext(),deviceId:hub.device?.id??lastChannelView.deviceId,maximums:routines.refs}),start:startPwm});
 $('enabled-choices').innerHTML=CHANNELS.map(ch=>`<label class="enabled-choice"><input id="enabled-${ch}" type="checkbox" aria-label="Enable channel ${ch}"><span>CH${ch}</span></label>`).join('');
 for(const ch of CHANNELS)$(`enabled-${ch}`).addEventListener('change',()=>{channelDraft=$(`enabled-${ch}`).checked?channelDraft|(1<<ch):channelDraft&~(1<<ch);render();});
 $('apply-channels').addEventListener('click',applyChannels);

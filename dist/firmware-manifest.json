@@ -1,5 +1,5 @@
 {
-  "firmware": "MEDITATION VEST BLE v10",
+  "firmware": "MEDITATION VEST BLE v11",
   "bleName": "MeditationVest",
   "protocol": 2,
   "enabledChannels": [
@@ -63,7 +63,7 @@
     }
   },
   "hubConnectorRevision": "2026-11-16-ch1-aligned",
-  "firmwareRevision": 10,
+  "firmwareRevision": 11,
   "hubConnectorPins": {
     "batteryPositive": 1,
     "batteryReturn": 2,
@@ -113,7 +113,7 @@
     16,
     17
   ],
-  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v10 physical test",
+  "boardPinCheck": "User reports successful previous hub channel tests, with one module/cable moved between ports; no new v11 physical test",
   "cycleLimitsMs": {
     "minPump": 50,
     "maxPump": 2000,
@@ -122,6 +122,33 @@
     "maxRelease": 10000,
     "fixedCooldown": 0,
     "maxRepeatCount": 999
+  },
+  "pwmTest": {
+    "frequencyHz": 100,
+    "resolutionBits": 10,
+    "defaultDurationMs": 1000,
+    "durationsMs": [
+      250,
+      500,
+      1000
+    ],
+    "uiDutiesPercent": [
+      100,
+      80,
+      60,
+      40,
+      25
+    ],
+    "valveLeadMs": 100,
+    "finalHoldMs": 200,
+    "singleChannelOnly": true,
+    "maximumStopsPump": true,
+    "measurement": "nominal sensor percentage-point rise per actual commanded pump second",
+    "motorRpmMeasured": false,
+    "kickStart": false,
+    "normalControlsDutyPercent": 100,
+    "physicalPwmVerified": false,
+    "reportSaved": "per hub/browser; latest 30; Preview separate"
   },
   "sensorDisplayOnly": false,
   "routineSensorControl": {
@@ -164,7 +191,7 @@
   "assistantUploaded": false,
   "sixChannelHardwareVerified": false,
   "previousHubPortTestsUserReportedWorking": true,
-  "v10HardwareTested": false,
+  "v11HardwareTested": false,
   "analogSensors": {
     "channels": [
       0,
@@ -193,11 +220,12 @@
   },
   "files": {
     "AnalogSensor.h": "cdff6b6713fad6453e8ebe6fed3125e2dac2639c7f236a583b6902ceb95eb9b1",
-    "BleProtocol.h": "4ddcac127bb314f01fa4fa9efc0dbb1ab3905a7a4c11256cd185d2e599a060c5",
-    "HubController.h": "0225e69df72fb228fbd0c9f5a723fe164b17e61468893dc5208e9151ac4a275f",
+    "BleProtocol.h": "0ea692ed5371e0f811bbaa3a0423deb0f03185e8e97b5c989881796371db3625",
+    "HubController.h": "ef46925b784ca2378f30955aa35b54383cdbe1b072f18de0ff308cf6985137af",
     "Hx710Frame.h": "02a4b1a951483d39c6d806a588a8fa6b3ba0212681dfe761c0ac36970107f3ec",
     "PinMap.h": "a3b4688d414dd3e20fc3d28daf198b9d7ba3a443ccf62ccf3d088052eac815ad",
-    "README.md": "fbd1b70e02924374506daa9f6dc1f62416da180a57fd4daab5f3edbe72f7e768",
-    "hub_ble.ino": "51a90630c7c12901e2711a2f985502b3e6d3e05cc94965f7282390ec238dcdaa"
+    "PumpOutput.h": "fa6ffca78ebdc352e20c9bb49429c18d360b5a541df3f913f62638346bd67849",
+    "README.md": "f912b1a21ced8ee1a2bbe592afbaca7d71ce022f962d46b903e645197ff96d64",
+    "hub_ble.ino": "c35284c3b0a66526ad62464447f185e912b372156b07ae262b44dfd3f01890f7"
   }
 }

@@ -12,12 +12,13 @@ inline void put16(uint8_t*p,uint16_t v){p[0]=v;p[1]=v>>8;}
 inline void put32(uint8_t*p,uint32_t v){put16(p,v);put16(p+2,v>>16);}
 struct Command {uint8_t op=0,mask=0,aux=0;uint16_t seq=0,pumpMs=0,holdMs=0,releaseMs=0,repeats=1;uint32_t session=0,receivedAt=0;};
 inline bool decodeCommand(const uint8_t*p,size_t n,Command&c){
- if(n!=18 || p[0]!=PROTOCOL_VERSION || p[1]<1 || p[1]>9 || ((p[1]<=4||p[1]>=8)&&p[3]!=0))return false;
+ if(n!=18 || p[0]!=PROTOCOL_VERSION || p[1]<1 || p[1]>10 || ((p[1]<=4||p[1]>=8)&&p[3]!=0))return false;
  c.op=p[1];c.mask=p[2];c.aux=p[3];c.seq=read16(p+4);c.pumpMs=read16(p+6);c.holdMs=read16(p+8);c.session=read32(p+10);c.releaseMs=read16(p+14);c.repeats=read16(p+16);
  if(!c.seq)return false;
  if(c.op==2)return c.mask==0&&c.pumpMs==0&&c.holdMs==0&&c.releaseMs==0&&c.repeats==0;
  if(c.op==8)return c.mask<=63&&c.pumpMs==0&&c.holdMs==0&&c.releaseMs==0&&c.repeats==0;
  if(c.op==9)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&(c.pumpMs==100||c.pumpMs==1000)&&c.holdMs==0&&c.releaseMs==0&&c.repeats==0;
+ if(c.op==10)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&(c.pumpMs==250||c.pumpMs==500||c.pumpMs==1000)&&c.holdMs>=25&&c.holdMs<=100&&c.holdMs%5==0&&c.releaseMs>200&&c.releaseMs<=2700&&c.repeats==1;
  if(c.op==3)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&c.pumpMs<=2&&c.holdMs<=2&&c.releaseMs==0&&c.repeats==0;
  if(c.op==4)return c.mask>0&&c.mask<=63&&!(c.mask&(c.mask-1))&&c.releaseMs==0&&c.repeats==1;
  if(c.op==5)return c.aux<=2;
@@ -26,11 +27,13 @@ inline bool decodeCommand(const uint8_t*p,size_t n,Command&c){
  return true;
 }
 #include "HubController.h"
-inline Reply applyCommand(HubController&controller,const Command&c,uint32_t liveSession,uint32_t currentSession,uint16_t&lastSeq,Reply previous,uint32_t now,bool(*saveChannels)(uint8_t)=nullptr){
+inline Reply applyCommand(HubController&controller,const Command&c,uint32_t liveSession,uint32_t currentSession,uint16_t&lastSeq,Reply previous,uint32_t now,bool(*saveChannels)(uint8_t)=nullptr,bool outputsReady=true){
  if(!c.session || c.session!=liveSession || c.session!=currentSession || c.seq<=lastSeq)return previous;
  lastSeq=c.seq;
  if(c.op==2){controller.stop();return Reply::Stopped;}
  if(now-c.receivedAt>250)return Reply::Expired;
+ if(!outputsReady){controller.stop();return Reply::OutputFailed;}
+ if(c.op==10){if(c.aux||c.repeats!=1)return Reply::Invalid;const auto result=controller.testPwm(c.mask,c.pumpMs,c.holdMs,c.releaseMs,now);if(result==Reply::Accepted)controller.pwmTrial.sequence=c.seq;return result;}
  if(c.op==9){if(c.aux||c.holdMs||c.releaseMs||c.repeats)return Reply::Invalid;return controller.calibrationPulse(c.mask,c.pumpMs,now);}
  if(c.op==8){
    if(c.aux||c.pumpMs||c.holdMs||c.releaseMs||c.repeats)return Reply::Invalid;
@@ -63,6 +66,7 @@ inline void encodeControlSummary(uint8_t*b,const HubController&c,uint32_t sessio
  uint16_t outputs=0;for(uint8_t ch=0;ch<6;++ch){if(c.pump(ch))outputs|=1<<(2*ch);if(c.valve(ch))outputs|=2<<(2*ch);}
  encodeSummary(b,c,session,seq,reply,0,outputs,65535);
  if(c.calibrating())b[2]|=1; // v10 calibration activity; analog data uses separate packets.
+ if(c.pwmTesting())b[2]|=2; // v11 exclusive, finite PWM test.
  // v9 reuses the retired HX710 age field: channel mask + revision marker.
  b[14]=c.enabledMask();b[15]=0xa9;
  b[19]=c.routineFault?0x80|(c.routineFault<<3)|c.routineFaultChannel:c.routine.active?c.routine.kind:0;
@@ -80,4 +84,10 @@ inline void encodeAnalog(uint8_t*b,uint8_t channel,uint32_t session,uint8_t flag
  for(unsigned i=0;i<20;++i)b[i]=0;
  b[0]=PROTOCOL_VERSION;b[1]=0x20;b[2]=channel;b[3]=flags;
  put16(b+4,raw);put32(b+6,session);put16(b+10,mv);put16(b+12,age);
+}
+
+inline void encodePwm(uint8_t*b,const HubController&c,uint32_t session){
+ for(unsigned i=0;i<20;++i)b[i]=0;const auto&t=c.pwmTrial;
+ b[0]=PROTOCOL_VERSION;b[1]=0x40;b[2]=t.channel;b[3]=t.duty;put16(b+4,t.duration);put32(b+6,session);
+ put16(b+10,t.startMv);put16(b+12,t.endMv);put16(b+14,t.actualMs);b[16]=t.result;b[17]=t.samples;put16(b+18,t.sequence);
 }
